@@ -14,6 +14,7 @@ import { IntegrationService } from '../integrations/integration.service';
 import { QueueService } from '../integrations/queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { geometricSchedule } from './credit-calculator';
+import { mercadoPagoPaymentStatus } from './payment-status';
 
 const STARTIF_CONSENT =
   'Autorizo a StartIF y LUFT para estudiar, originar y administrar mi solicitud de crédito, validar mi identidad, firmar electrónicamente el pagaré, recaudar las cuotas y reportar el comportamiento positivo o negativo a los operadores de información, conforme a la ley y a las autorizaciones entregadas.';
@@ -335,6 +336,20 @@ export class StartifService {
       where: { id: user.id },
     });
     const remaining = installment.amountCOP - installment.paidCOP;
+    const reusable = await this.db.startif.payment.findFirst({
+      where: {
+        installmentId: installment.id,
+        status: { in: ['CREATED', 'ACTION_REQUIRED', 'PROCESSING'] },
+        createdAt: { gt: new Date(Date.now() - 30 * 60_000) },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (reusable)
+      return {
+        ...reusable,
+        amountCOP: reusable.amountCOP.toString(),
+        reused: true,
+      };
     const idempotencyKey = randomUUID();
     const payment = await this.db.startif.payment.create({
       data: {
@@ -391,30 +406,21 @@ export class StartifService {
     body: any,
     dataId?: string,
   ) {
+    const externalId = String(dataId ?? body?.data?.id ?? '');
     this.integrations.validateMercadoPagoWebhook(
       headers['x-signature'] as string | undefined,
       headers['x-request-id'] as string | undefined,
-      dataId ?? String(body?.data?.id ?? ''),
+      externalId,
     );
-    const externalId = String(body?.data?.id ?? dataId ?? '');
-    const resource = body?.status
-      ? body
-      : await this.integrations.getMercadoPagoResource(
-          externalId,
-          String(body?.type ?? body?.topic ?? body?.action ?? ''),
-        );
+    const resource = await this.integrations.getMercadoPagoResource(
+      externalId,
+      String(body?.type ?? body?.topic ?? body?.action ?? ''),
+    );
     const providerPayment = resource?.transactions?.payments?.[0] ?? resource;
     const rawStatus = String(
-      providerPayment?.status ?? resource?.status ?? body?.status ?? '',
+      providerPayment?.status ?? resource?.status ?? '',
     ).toLowerCase();
-    const status =
-      rawStatus.includes('approved') || rawStatus.includes('processed')
-        ? 'APPROVED'
-        : rawStatus.includes('reject')
-          ? 'REJECTED'
-          : rawStatus.includes('cancel')
-            ? 'CANCELLED'
-            : 'PROCESSING';
+    const status = mercadoPagoPaymentStatus(rawStatus);
     const providerExternalId = String(
       resource?.id ?? providerPayment?.id ?? externalId,
     );
@@ -434,28 +440,85 @@ export class StartifService {
       },
     });
     if (!payment) return { accepted: true, matched: false };
-    if (payment.status === 'APPROVED')
+    if (payment.status === 'APPROVED' && status !== 'REFUNDED')
       return { accepted: true, matched: true, idempotent: true };
-    const result = await this.db.startif.$transaction(async (tx) => {
-      await tx.payment.update({
-        where: { id: payment.id },
-        data: {
-          status,
-          approvedAt: status === 'APPROVED' ? new Date() : undefined,
-          externalId: providerExternalId,
-          providerPayloadHash: this.crypto.hash(JSON.stringify(resource)),
-          statusDetail: String(
-            providerPayment?.status_detail ??
-              resource?.status_detail ??
-              rawStatus,
-          ).slice(0, 160),
-        },
+    const providerAmount = Number(
+      providerPayment?.amount ??
+        providerPayment?.transaction_amount ??
+        resource?.total_amount,
+    );
+    if (
+      ['APPROVED', 'REFUNDED'].includes(status) &&
+      (!Number.isFinite(providerAmount) ||
+        Math.abs(providerAmount - Number(payment.amountCOP)) > 0.01)
+    )
+      throw new BadRequestException({
+        code: 'payment_amount_mismatch',
+        paymentId: payment.id,
       });
+    const result = await this.db.startif.$transaction(async (tx) => {
+      const paymentData = {
+        status,
+        approvedAt: status === 'APPROVED' ? new Date() : undefined,
+        externalId: providerExternalId,
+        providerPayloadHash: this.crypto.hash(JSON.stringify(resource)),
+        statusDetail: String(
+          providerPayment?.status_detail ??
+            resource?.status_detail ??
+            rawStatus,
+        ).slice(0, 160),
+      };
+      if (status === 'APPROVED') {
+        const claimed = await tx.payment.updateMany({
+          where: { id: payment.id, status: { not: 'APPROVED' } },
+          data: paymentData,
+        });
+        if (!claimed.count)
+          return {
+            idempotent: true,
+            loanClosed: false,
+            loanId: undefined,
+            credited: false,
+          };
+      } else if (status === 'REFUNDED') {
+        const claimed = await tx.payment.updateMany({
+          where: { id: payment.id, status: 'APPROVED' },
+          data: paymentData,
+        });
+        if (!claimed.count)
+          return {
+            idempotent: true,
+            loanClosed: false,
+            loanId: undefined,
+            credited: false,
+          };
+      } else {
+        await tx.payment.updateMany({
+          where: { id: payment.id, status: { not: 'APPROVED' } },
+          data: paymentData,
+        });
+      }
       if (status === 'APPROVED' && payment.installmentId) {
         const installment = await tx.installment.findUniqueOrThrow({
           where: { id: payment.installmentId },
         });
-        const paid = installment.paidCOP + payment.amountCOP;
+        const remaining = installment.amountCOP - installment.paidCOP;
+        if (remaining <= 0n) {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: { statusDetail: 'DUPLICATE_PAYMENT_REQUIRES_RECONCILIATION' },
+          });
+          return {
+            idempotent: false,
+            loanClosed: false,
+            loanId: installment.loanId,
+            credited: false,
+            reconciliationRequired: true,
+          };
+        }
+        const credited =
+          payment.amountCOP > remaining ? remaining : payment.amountCOP;
+        const paid = installment.paidCOP + credited;
         const paidInFull = paid >= installment.amountCOP;
         await tx.installment.update({
           where: { id: installment.id },
@@ -491,22 +554,103 @@ export class StartifService {
               data: { status: 'COMPLETED' },
             });
           }
-          return { loanClosed: completed, loanId: installment.loanId };
+          return {
+            idempotent: false,
+            loanClosed: completed,
+            loanId: installment.loanId,
+            credited: true,
+            reconciliationRequired: payment.amountCOP > remaining,
+          };
         }
       }
-      return { loanClosed: false, loanId: undefined };
+      if (status === 'REFUNDED' && payment.installmentId) {
+        const installment = await tx.installment.findUniqueOrThrow({
+          where: { id: payment.installmentId },
+          include: { loan: true },
+        });
+        const paid =
+          installment.paidCOP > payment.amountCOP
+            ? installment.paidCOP - payment.amountCOP
+            : 0n;
+        const today = new Date(new Date().toISOString().slice(0, 10));
+        const reopenedStatus =
+          paid > 0n
+            ? 'PARTIALLY_PAID'
+            : installment.dueDate < today
+              ? 'OVERDUE'
+              : 'PENDING';
+        await tx.installment.update({
+          where: { id: installment.id },
+          data: { paidCOP: paid, paidAt: null, status: reopenedStatus },
+        });
+        await tx.loan.update({
+          where: { id: installment.loanId },
+          data: {
+            status: 'ACTIVE',
+            closedAt: null,
+            outstandingBalanceCOP:
+              installment.openingBalanceCOP >
+              installment.loan.outstandingBalanceCOP
+                ? installment.openingBalanceCOP
+                : installment.loan.outstandingBalanceCOP,
+          },
+        });
+        await tx.creditApplication.update({
+          where: { id: installment.loan.applicationId },
+          data: { status: 'ACTIVE' },
+        });
+        return {
+          idempotent: false,
+          loanClosed: false,
+          loanId: installment.loanId,
+          credited: false,
+          refunded: true,
+        };
+      }
+      return {
+        idempotent: false,
+        loanClosed: false,
+        loanId: undefined,
+        credited: false,
+      };
     });
+    if (result.idempotent)
+      return { accepted: true, matched: true, idempotent: true };
     this.realtime.toUser(payment.userId, 'payment:status', {
       paymentId: payment.id,
       status,
     });
-    if (status === 'APPROVED')
+    if (status === 'APPROVED' && result.credited)
       await this.queues.add(
         'lifecycle',
         'report-payment',
         { paymentId: payment.id, userId: payment.userId },
         `report-${payment.id}`,
       );
+    if (result.reconciliationRequired || result.refunded)
+      await this.integrations.triggerAutomation('luft-payment-reconciliation', {
+        event: result.refunded
+          ? 'payment.refunded'
+          : 'payment.reconciliation_required',
+        paymentId: payment.id,
+        userId: payment.userId,
+        loanId: result.loanId,
+      });
+    await this.audit.record({
+      actorRole: 'SYSTEM',
+      action: result.refunded
+        ? 'payment.refunded'
+        : 'payment.webhook.processed',
+      resource: 'Payment',
+      resourceId: payment.id,
+      payload: {
+        provider: 'MERCADOPAGO',
+        status,
+        credited: result.credited,
+        reconciliationRequired: Boolean(result.reconciliationRequired),
+        providerPayloadHash: this.crypto.hash(JSON.stringify(resource)),
+      },
+    });
     if (status === 'APPROVED' && result.loanClosed) {
       const previousFinal = await this.db.luft.scoreInquiry.findFirst({
         where: { userId: payment.userId, type: 'FINAL' },

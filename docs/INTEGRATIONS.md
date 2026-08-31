@@ -8,7 +8,8 @@ Official references: [PSE through Orders API](https://www.mercadopago.com.co/dev
 
 - Set `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_PUBLIC_KEY`, and `MERCADOPAGO_WEBHOOK_SECRET`.
 - Configure the production webhook as `https://luft.restaurar.co/api/webhooks/mercadopago` for the Orders event.
-- The API validates `x-signature`/`x-request-id`, retrieves the notified order or payment from Mercado Pago, and applies the result idempotently.
+- The API validates `x-signature`/`x-request-id`, always retrieves the notified order or payment from Mercado Pago, verifies its amount, and claims the state change atomically so concurrent or replayed webhooks cannot credit a quota twice.
+- Reused payment attempts return the still-active PSE redirect for 30 minutes. Late duplicate approvals and refunds reopen/reconcile the financial state and emit an operational automation instead of silently changing balances.
 - Test approved, rejected, cancelled, duplicate, late, and invalid-signature notifications before setting `MERCADOPAGO_ENABLED=true`.
 
 ## Truora Digital Identity
