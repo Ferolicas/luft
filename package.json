@@ -1,0 +1,27 @@
+{
+  "name": "luft",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LUFT: identidad, educación y construcción de historial financiero para jóvenes de Colombia.",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22.12 <27"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "test:e2e": "playwright test",
+    "db:generate": "bash scripts/prisma-generate.sh",
+    "db:migrate": "bash scripts/prisma-migrate.sh",
+    "start": "pnpm --filter @luft/web start"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "turbo": "^2.5.6",
+    "typescript": "5.9.3"
+  }
+}
+

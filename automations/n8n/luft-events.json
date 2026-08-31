@@ -1,0 +1,14 @@
+{
+  "name": "LUFT · Eventos transaccionales",
+  "nodes": [
+    { "parameters": { "httpMethod": "POST", "path": "luft-notifications", "responseMode": "responseNode", "options": {} }, "id": "notifications", "name": "Notificaciones LUFT", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 220], "webhookId": "luft-notifications" },
+    { "parameters": { "httpMethod": "POST", "path": "luft-payment-reminder", "responseMode": "responseNode", "options": {} }, "id": "reminders", "name": "Recordatorios LUFT", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 420], "webhookId": "luft-payment-reminder" },
+    { "parameters": { "respondWith": "json", "responseBody": "={{ { accepted: true, event: $json.event } }}", "options": {} }, "id": "response", "name": "Acuse idempotente", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.4, "position": [540, 320] }
+  ],
+  "connections": { "Notificaciones LUFT": { "main": [[{ "node": "Acuse idempotente", "type": "main", "index": 0 }]] }, "Recordatorios LUFT": { "main": [[{ "node": "Acuse idempotente", "type": "main", "index": 0 }]] } },
+  "active": false,
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "saveDataSuccessExecution": "none" },
+  "versionId": "22222222-2222-4222-8222-222222222222",
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": []
+}

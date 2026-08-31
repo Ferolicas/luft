@@ -1,0 +1,262 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../../src/generated/startif"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CreditStatus {
+  DRAFT
+  PENDING_KYC
+  PENDING_CONSENT
+  PENDING_SIGNATURE
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  ACTIVE
+  COMPLETED
+  DEFAULTED
+  CONFIGURATION_REQUIRED
+}
+
+enum ProcessStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CONFIGURATION_REQUIRED
+}
+
+enum InstallmentStatus {
+  PENDING
+  DUE
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+enum PaymentStatus {
+  CREATED
+  ACTION_REQUIRED
+  PROCESSING
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+
+enum PqrStatus {
+  OPEN
+  IN_REVIEW
+  WAITING_USER
+  RESOLVED
+  CLOSED
+}
+
+model StartifConsent {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  kind         String   @db.VarChar(80)
+  version      String   @db.VarChar(32)
+  textSnapshot String   @db.Text
+  textHash     String   @db.Char(64)
+  ipHash       String?  @db.Char(64)
+  userAgent    String?  @db.VarChar(500)
+  deviceMeta   Json?
+  acceptedAt   DateTime @default(now()) @db.Timestamptz(3)
+  revokedAt    DateTime? @db.Timestamptz(3)
+
+  @@index([userId, kind, acceptedAt])
+}
+
+model CreditApplication {
+  id                 String       @id @default(uuid()) @db.Uuid
+  userId             String       @db.Uuid
+  amountCOP          BigInt
+  termMonths         Int
+  requestedRateMonthly Decimal?   @db.Decimal(8, 6)
+  approvedRateMonthly  Decimal?   @db.Decimal(8, 6)
+  usuryRateId        String?      @db.Uuid
+  purpose            String       @default("SERVICIO_LUFT") @db.VarChar(80)
+  status             CreditStatus @default(DRAFT)
+  submittedAt        DateTime?    @db.Timestamptz(3)
+  decidedAt          DateTime?    @db.Timestamptz(3)
+  decisionReason     String?      @db.Text
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+  kycProcesses       KycProcess[]
+  signatures         SignatureEnvelope[]
+  loan               Loan?
+  usuryRate          UsuryRate?   @relation(fields: [usuryRateId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([status, submittedAt])
+}
+
+model KycProcess {
+  id                 String        @id @default(uuid()) @db.Uuid
+  applicationId      String        @db.Uuid
+  userId             String        @db.Uuid
+  provider           String        @default("TRUORA") @db.VarChar(40)
+  externalId         String?       @unique @db.VarChar(160)
+  status             ProcessStatus @default(PENDING)
+  verificationUrl    String?       @db.Text
+  resultCiphertext   String?       @db.Text
+  failureReason      String?       @db.Text
+  startedAt          DateTime      @default(now()) @db.Timestamptz(3)
+  completedAt        DateTime?     @db.Timestamptz(3)
+  application        CreditApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+}
+
+model SignatureEnvelope {
+  id                  String        @id @default(uuid()) @db.Uuid
+  applicationId       String        @db.Uuid
+  userId              String        @db.Uuid
+  status              ProcessStatus @default(PENDING)
+  documentVersion     String        @db.VarChar(32)
+  documentSnapshot    String        @db.Text
+  documentHash        String        @db.Char(64)
+  signatureCiphertext String?       @db.Text
+  otpChallengeId      String?       @db.Uuid
+  ipHash              String?       @db.Char(64)
+  userAgent           String?       @db.VarChar(500)
+  deviceMeta          Json?
+  signedAt            DateTime?     @db.Timestamptz(3)
+  createdAt           DateTime      @default(now()) @db.Timestamptz(3)
+  application         CreditApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model UsuryRate {
+  id                  String   @id @default(uuid()) @db.Uuid
+  category            String   @db.VarChar(100)
+  annualEffectiveRate Decimal  @db.Decimal(8, 5)
+  effectiveFrom       DateTime @db.Date
+  effectiveTo         DateTime @db.Date
+  sourceUrl           String   @db.Text
+  sourceDocumentHash  String?  @db.Char(64)
+  verifiedAt          DateTime @db.Timestamptz(3)
+  createdBy           String   @db.Uuid
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  applications        CreditApplication[]
+
+  @@unique([category, effectiveFrom])
+}
+
+model Loan {
+  id                   String       @id @default(uuid()) @db.Uuid
+  applicationId        String       @unique @db.Uuid
+  userId               String       @db.Uuid
+  principalCOP         BigInt
+  monthlyRate          Decimal      @db.Decimal(8, 6)
+  termMonths           Int
+  geometricDecrease    Decimal      @default(0.150000) @db.Decimal(8, 6)
+  status               CreditStatus @default(ACTIVE)
+  outstandingBalanceCOP BigInt
+  disbursedAt          DateTime?    @db.Timestamptz(3)
+  closedAt             DateTime?    @db.Timestamptz(3)
+  createdAt            DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime     @updatedAt @db.Timestamptz(3)
+  application          CreditApplication @relation(fields: [applicationId], references: [id])
+  installments         Installment[]
+  virtualCard          VirtualCard?
+
+  @@index([userId, status])
+}
+
+model Installment {
+  id             String            @id @default(uuid()) @db.Uuid
+  loanId         String            @db.Uuid
+  sequence       Int
+  dueDate        DateTime          @db.Date
+  openingBalanceCOP BigInt
+  amountCOP      BigInt
+  principalCOP   BigInt
+  interestCOP    BigInt
+  closingBalanceCOP BigInt
+  paidCOP        BigInt            @default(0)
+  status         InstallmentStatus @default(PENDING)
+  paidAt         DateTime?         @db.Timestamptz(3)
+  loan           Loan              @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  payments       Payment[]
+
+  @@unique([loanId, sequence])
+  @@index([dueDate, status])
+}
+
+model Payment {
+  id                String        @id @default(uuid()) @db.Uuid
+  userId            String        @db.Uuid
+  installmentId     String?       @db.Uuid
+  provider          String        @default("MERCADOPAGO") @db.VarChar(40)
+  externalId        String?       @unique @db.VarChar(160)
+  idempotencyKey    String        @unique @db.Uuid
+  amountCOP         BigInt
+  status            PaymentStatus @default(CREATED)
+  redirectUrl       String?       @db.Text
+  statusDetail      String?       @db.VarChar(160)
+  providerPayloadHash String?      @db.Char(64)
+  approvedAt        DateTime?     @db.Timestamptz(3)
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+  installment       Installment?  @relation(fields: [installmentId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([status, updatedAt])
+}
+
+model VirtualCard {
+  id             String   @id @default(uuid()) @db.Uuid
+  loanId         String   @unique @db.Uuid
+  userId         String   @db.Uuid
+  last4          String   @db.Char(4)
+  fixedLimitCOP  BigInt
+  status         String   @default("ACTIVE") @db.VarChar(32)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  loan           Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model TradelineReport {
+  id                String        @id @default(uuid()) @db.Uuid
+  userId            String        @db.Uuid
+  loanId            String        @db.Uuid
+  provider          String        @db.VarChar(40)
+  period            String        @db.Char(7)
+  status            ProcessStatus @default(PENDING)
+  payloadHash       String?       @db.Char(64)
+  externalReference String?       @db.VarChar(160)
+  failureReason     String?       @db.Text
+  submittedAt       DateTime?     @db.Timestamptz(3)
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@unique([loanId, provider, period])
+  @@index([status, createdAt])
+}
+
+model Pqr {
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String    @db.Uuid
+  type                 String    @db.VarChar(80)
+  subject              String    @db.VarChar(180)
+  messageCiphertext    String    @db.Text
+  status               PqrStatus @default(OPEN)
+  assignedRole         String?   @db.VarChar(40)
+  resolutionCiphertext String?   @db.Text
+  dueAt                DateTime  @db.Timestamptz(3)
+  resolvedAt           DateTime? @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([status, dueAt])
+  @@index([userId, createdAt])
+}
+

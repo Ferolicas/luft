@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../../src/generated/luft"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ConsentKind {
+  DATA_PROCESSING
+  BUREAU_QUERY
+  SCORE_SHARE_WITH_STARTIF
+  COMMUNICATIONS
+}
+
+enum InquiryType {
+  INITIAL
+  FINAL
+}
+
+enum InquiryProvider {
+  DATACREDITO
+  TRANSUNION
+}
+
+enum WorkflowStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CONFIGURATION_REQUIRED
+}
+
+model Consent {
+  id           String      @id @default(uuid()) @db.Uuid
+  userId       String      @db.Uuid
+  kind         ConsentKind
+  version      String      @db.VarChar(32)
+  textSnapshot String      @db.Text
+  textHash     String      @db.Char(64)
+  ipHash       String?     @db.Char(64)
+  userAgent    String?     @db.VarChar(500)
+  deviceMeta   Json?
+  acceptedAt   DateTime    @default(now()) @db.Timestamptz(3)
+  revokedAt    DateTime?   @db.Timestamptz(3)
+
+  @@index([userId, kind, acceptedAt])
+}
+
+model FinancialProfile {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @db.Uuid
+  currentScore       Int?
+  archetype          String?  @db.VarChar(40)
+  primaryGoal        String?  @db.VarChar(80)
+  demographicAnswers Json?
+  completionPercent  Int      @default(0)
+  existingHistory    Boolean?
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model QuestionnaireResponse {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  version     String   @db.VarChar(32)
+  answers     Json
+  submittedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, submittedAt])
+}
+
+model ArchetypeResult {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  archetype  String   @db.VarChar(40)
+  score      Int
+  traits     Json
+  ruleVersion String  @db.VarChar(32)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+}
+
+model Goal {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  kind        String   @db.VarChar(80)
+  title       String   @db.VarChar(160)
+  targetCOP   BigInt?
+  progress    Int      @default(0)
+  targetDate  DateTime? @db.Date
+  completedAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+}
+
+model EducationModule {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique @db.VarChar(80)
+  title       String   @db.VarChar(160)
+  description String   @db.Text
+  position    Int
+  durationMin Int
+  lessons     Json
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  progress    LessonProgress[]
+}
+
+model LessonProgress {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  moduleId    String   @db.Uuid
+  lessonKey   String   @db.VarChar(80)
+  score       Int?
+  completedAt DateTime? @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  module      EducationModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleId, lessonKey])
+  @@index([userId, updatedAt])
+}
+
+model Streak {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @unique @db.Uuid
+  currentDays  Int      @default(0)
+  longestDays  Int      @default(0)
+  lastActivity DateTime? @db.Date
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model ScoreInquiry {
+  id              String          @id @default(uuid()) @db.Uuid
+  userId          String          @db.Uuid
+  type            InquiryType
+  provider        InquiryProvider
+  status          WorkflowStatus  @default(PENDING)
+  score           Int?
+  existingHistory Boolean?
+  resultCiphertext String?        @db.Text
+  externalReference String?       @db.VarChar(160)
+  errorCode       String?         @db.VarChar(80)
+  requestedAt     DateTime        @default(now()) @db.Timestamptz(3)
+  completedAt     DateTime?       @db.Timestamptz(3)
+
+  @@index([userId, type, requestedAt])
+}
+
+model Opportunity {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  kind        String   @db.VarChar(80)
+  title       String   @db.VarChar(160)
+  description String   @db.Text
+  matchScore  Int
+  metadata    Json?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, matchScore])
+}

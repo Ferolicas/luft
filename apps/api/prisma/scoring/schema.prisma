@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../../src/generated/scoring"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model DecisionVersion {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  description String   @db.Text
+  rules       Json
+  active      Boolean  @default(false)
+  createdBy   String   @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+}
+
+model ScoreResult {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  decisionVersion String  @db.VarChar(100)
+  score          Int
+  archetype      String   @db.VarChar(40)
+  factors        Json
+  modelUsed      Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+}
+
+model ModelArtifact {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.VarChar(100)
+  version     String   @db.VarChar(40)
+  checksum    String   @db.Char(64)
+  storagePath String   @db.Text
+  metrics     Json
+  approvedBy  String?  @db.Uuid
+  active      Boolean  @default(false)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([name, version])
+}
+

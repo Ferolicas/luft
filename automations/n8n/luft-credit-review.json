@@ -1,0 +1,14 @@
+{
+  "name": "LUFT · Revisión de crédito",
+  "nodes": [
+    { "parameters": { "httpMethod": "POST", "path": "luft-credit-review", "responseMode": "responseNode", "options": {} }, "id": "webhook", "name": "Evento firmado LUFT", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [260, 300], "webhookId": "luft-credit-review" },
+    { "parameters": { "assignments": { "assignments": [{ "id": "stage", "name": "stage", "value": "={{ 'risk_review' }}", "type": "string" }] }, "options": {} }, "id": "normalize", "name": "Normalizar tarea", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [500, 300] },
+    { "parameters": { "respondWith": "json", "responseBody": "={{ { accepted: true, workflow: 'risk_review', applicationId: $json.applicationId } }}", "options": {} }, "id": "respond", "name": "Confirmar recepción", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.4, "position": [740, 300] }
+  ],
+  "connections": { "Evento firmado LUFT": { "main": [[{ "node": "Normalizar tarea", "type": "main", "index": 0 }]] }, "Normalizar tarea": { "main": [[{ "node": "Confirmar recepción", "type": "main", "index": 0 }]] } },
+  "active": false,
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all", "saveDataSuccessExecution": "none" },
+  "versionId": "11111111-1111-4111-8111-111111111111",
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": []
+}

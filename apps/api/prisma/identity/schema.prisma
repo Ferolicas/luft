@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../../src/generated/identity"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  COMMERCIAL
+  LEGAL
+  SUPPORT
+  COLLECTIONS
+  RISK
+  FINANCE
+  SUPERADMIN
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum OtpPurpose {
+  PHONE_VERIFICATION
+  LOGIN
+  SIGNATURE
+  PASSWORD_RESET
+}
+
+model User {
+  id                         String                @id @default(uuid()) @db.Uuid
+  email                      String                @unique @db.VarChar(254)
+  username                   String                @unique @db.VarChar(40)
+  phone                      String                @unique @db.VarChar(20)
+  documentHash               String                @unique @db.Char(64)
+  documentCiphertext         String                @db.Text
+  fullName                   String                @db.VarChar(160)
+  addressCiphertext          String                @db.Text
+  documentIssuedAtCiphertext String                @db.Text
+  stratum                    Int
+  passwordHash               String                @db.Text
+  role                       Role                  @default(USER)
+  status                     UserStatus            @default(PENDING_VERIFICATION)
+  phoneVerifiedAt            DateTime?             @db.Timestamptz(3)
+  emailVerifiedAt            DateTime?             @db.Timestamptz(3)
+  lastLoginAt                DateTime?             @db.Timestamptz(3)
+  createdAt                  DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime              @updatedAt @db.Timestamptz(3)
+  sessions                   Session[]
+  passkeys                   Passkey[]
+  otpChallenges              OtpChallenge[]
+  webauthnChallenges         WebauthnChallenge[]
+  pushSubscriptions          PushSubscription[]
+
+  @@index([status, createdAt])
+}
+
+model Session {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  tokenHash   String    @unique @db.Char(64)
+  ipHash      String?   @db.Char(64)
+  userAgent   String?   @db.VarChar(500)
+  expiresAt   DateTime  @db.Timestamptz(3)
+  revokedAt   DateTime? @db.Timestamptz(3)
+  lastSeenAt  DateTime  @default(now()) @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Passkey {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  credentialId   String   @unique @db.Text
+  publicKey       Bytes
+  counter         BigInt   @default(0)
+  transports      Json?
+  deviceType      String?  @db.VarChar(32)
+  backedUp        Boolean  @default(false)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  lastUsedAt      DateTime? @db.Timestamptz(3)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model OtpChallenge {
+  id          String     @id @default(uuid()) @db.Uuid
+  userId      String?    @db.Uuid
+  destination String     @db.VarChar(254)
+  purpose     OtpPurpose
+  codeHash    String     @db.Char(64)
+  attempts    Int        @default(0)
+  expiresAt   DateTime   @db.Timestamptz(3)
+  verifiedAt  DateTime?  @db.Timestamptz(3)
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([destination, purpose, expiresAt])
+}
+
+model WebauthnChallenge {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  challenge String   @unique @db.Text
+  purpose   String   @db.VarChar(32)
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, expiresAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  endpoint  String   @unique @db.Text
+  p256dh    String   @db.Text
+  auth      String   @db.Text
+  userAgent String?  @db.VarChar(500)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
