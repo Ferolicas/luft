@@ -3,7 +3,7 @@ module.exports = {
     {
       name: "luft-web",
       cwd: "/var/www/luft/apps/web",
-      script: "../../node_modules/next/dist/bin/next",
+      script: "node_modules/next/dist/bin/next",
       args: "start -p 4002",
       env: { NODE_ENV: "production", PORT: "4002" },
       instances: 2,
