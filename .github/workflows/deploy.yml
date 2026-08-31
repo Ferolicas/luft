@@ -23,10 +23,17 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
       - run: pnpm lint
+      - run: pnpm typecheck
       - run: pnpm test
+      - run: pip install --disable-pip-version-check -r services/scoring/requirements.txt
+      - run: PYTHONPATH=services/scoring pytest -q services/scoring/tests
       - run: pnpm build
 
       - name: Load SSH key
@@ -36,4 +43,3 @@ jobs:
 
       - name: Deploy on restaurar VPS
         run: ssh -o StrictHostKeyChecking=accept-new ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "bash /var/www/luft/deploy.sh"
-
