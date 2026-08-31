@@ -431,6 +431,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shado
 .legal-pending p { color: var(--muted); line-height: 1.75; }
 .legal-pending .button { margin-top: 18px; }
 .legal-icon { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 18px; background: #e9f1ff; color: var(--blue); margin-bottom: 22px; }
+.danger-zone { border-color: #f1c8ce; }
+.danger-zone .form-icon { background: #fff0f2; color: var(--danger); }
+.danger-button { background: var(--danger); box-shadow: 0 9px 22px rgba(201,64,80,.2); }
+.danger-button:hover { background: #a92f40; }
 
 @media (max-width: 720px) {
   .public-header { height: 68px; padding: 0 18px; }

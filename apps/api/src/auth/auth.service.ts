@@ -18,7 +18,7 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/server';
 import * as argon2 from 'argon2';
-import { addDays, addMinutes } from 'date-fns';
+import { addDays, addMinutes, addYears } from 'date-fns';
 import type { Request, Response } from 'express';
 import { randomInt, randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -66,6 +66,7 @@ const CONSENT_TEXT =
 export class AuthService {
   private readonly cookieName: string;
   private readonly sessionDays: number;
+  private readonly financialRetentionYears: number;
 
   constructor(
     private readonly db: DatabaseService,
@@ -76,6 +77,9 @@ export class AuthService {
   ) {
     this.cookieName = config.get('SESSION_COOKIE_NAME') ?? 'luft_session';
     this.sessionDays = Number(config.get('SESSION_TTL_DAYS') ?? 30);
+    this.financialRetentionYears = Number(
+      config.get('FINANCIAL_RECORD_RETENTION_YEARS') ?? 10,
+    );
   }
 
   async register(body: unknown, request: Request) {
@@ -418,6 +422,94 @@ export class AuthService {
       userAgent: request.get('user-agent'),
     });
     return { ok: true };
+  }
+
+  async closeAccount(
+    user: AuthenticatedUser,
+    body: unknown,
+    request: Request,
+    response: Response,
+  ) {
+    if (user.role !== 'USER')
+      throw new BadRequestException(
+        'Las cuentas operativas deben ser transferidas y cerradas por otra superadministración.',
+      );
+    const input = z
+      .object({
+        password: z.string().min(1).max(128),
+        confirmation: z.literal('ELIMINAR MI CUENTA'),
+      })
+      .parse(body);
+    const identity = await this.db.identity.user.findUniqueOrThrow({
+      where: { id: user.id },
+    });
+    if (!(await argon2.verify(identity.passwordHash, input.password)))
+      throw new UnauthorizedException('La contraseña no es correcta.');
+
+    const [applications, loans, payments, reports] = await Promise.all([
+      this.db.startif.creditApplication.count({ where: { userId: user.id } }),
+      this.db.startif.loan.count({ where: { userId: user.id } }),
+      this.db.startif.payment.count({ where: { userId: user.id } }),
+      this.db.startif.tradelineReport.count({ where: { userId: user.id } }),
+    ]);
+    const hasFinancialRecord = applications + loans + payments + reports > 0;
+    await this.audit.record({
+      actorUserId: user.id,
+      actorRole: user.role,
+      action: 'identity.account.closure_requested',
+      resource: 'User',
+      resourceId: user.id,
+      ip: request.ip,
+      userAgent: request.get('user-agent'),
+      payload: { retainedForFinancialRecord: hasFinancialRecord },
+    });
+
+    if (hasFinancialRecord) {
+      const now = new Date();
+      const retentionUntil = addYears(now, this.financialRetentionYears);
+      await this.db.identity.$transaction([
+        this.db.identity.user.update({
+          where: { id: user.id },
+          data: {
+            status: 'CLOSED',
+            closureRequestedAt: now,
+            retentionUntil,
+          },
+        }),
+        this.db.identity.session.updateMany({
+          where: { userId: user.id, revokedAt: null },
+          data: { revokedAt: now },
+        }),
+      ]);
+      response.clearCookie(this.cookieName, { path: '/' });
+      return {
+        ok: true,
+        deleted: false,
+        retainedUntil: retentionUntil,
+        reason: 'FINANCIAL_RECORD_RETENTION',
+      };
+    }
+
+    await this.db.startif.$transaction([
+      this.db.startif.pqr.deleteMany({ where: { userId: user.id } }),
+      this.db.startif.startifConsent.deleteMany({ where: { userId: user.id } }),
+    ]);
+    await this.db.luft.$transaction([
+      this.db.luft.opportunity.deleteMany({ where: { userId: user.id } }),
+      this.db.luft.scoreInquiry.deleteMany({ where: { userId: user.id } }),
+      this.db.luft.streak.deleteMany({ where: { userId: user.id } }),
+      this.db.luft.lessonProgress.deleteMany({ where: { userId: user.id } }),
+      this.db.luft.goal.deleteMany({ where: { userId: user.id } }),
+      this.db.luft.archetypeResult.deleteMany({ where: { userId: user.id } }),
+      this.db.luft.questionnaireResponse.deleteMany({
+        where: { userId: user.id },
+      }),
+      this.db.luft.financialProfile.deleteMany({ where: { userId: user.id } }),
+      this.db.luft.consent.deleteMany({ where: { userId: user.id } }),
+    ]);
+    await this.db.identity.user.delete({ where: { id: user.id } });
+    response.clearCookie(this.cookieName, { path: '/' });
+    return { ok: true, deleted: true };
   }
 
   async userFromSession(token: string): Promise<AuthenticatedUser | null> {

@@ -1,0 +1,3 @@
+ALTER TABLE "User"
+ADD COLUMN "closureRequestedAt" TIMESTAMPTZ(3),
+ADD COLUMN "retentionUntil" TIMESTAMPTZ(3);

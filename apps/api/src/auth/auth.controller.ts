@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Patch,
   Post,
@@ -92,6 +93,18 @@ export class AuthController {
       this.config.get('SESSION_COOKIE_NAME') ?? 'luft_session'
     ] as string;
     return this.auth.changePassword(user, token, body, request);
+  }
+
+  @Delete('account')
+  @UseGuards(AuthGuard)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  closeAccount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: unknown,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.auth.closeAccount(user, body, request, response);
   }
 
   @Post('passkeys/registration-options')

@@ -49,6 +49,8 @@ model User {
   phoneVerifiedAt            DateTime?             @db.Timestamptz(3)
   emailVerifiedAt            DateTime?             @db.Timestamptz(3)
   lastLoginAt                DateTime?             @db.Timestamptz(3)
+  closureRequestedAt         DateTime?             @db.Timestamptz(3)
+  retentionUntil             DateTime?             @db.Timestamptz(3)
   createdAt                  DateTime              @default(now()) @db.Timestamptz(3)
   updatedAt                  DateTime              @updatedAt @db.Timestamptz(3)
   sessions                   Session[]
@@ -131,4 +133,3 @@ model PushSubscription {
 
   @@index([userId])
 }
-

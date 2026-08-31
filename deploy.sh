@@ -28,6 +28,9 @@ services/scoring/.venv/bin/pip install --disable-pip-version-check -r services/s
 mkdir -p "$PRIVATE_STORAGE_PATH"
 chmod 700 "$PRIVATE_STORAGE_PATH"
 
+install -o root -g root -m 700 scripts/backup-production.sh /usr/local/sbin/luft-backup
+install -o root -g root -m 600 deploy/luft-backup.cron /etc/cron.d/luft-backup
+
 pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save
 

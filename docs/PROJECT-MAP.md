@@ -49,6 +49,7 @@ Adapters fail closed with `configuration_required` until real credentials and pr
 - Opaque, signed, HTTP-only session cookie with Argon2id passwords.
 - Registration and password recovery through OTP; passkeys through WebAuthn.
 - Password change revokes every other active session.
+- Account closure requires the current password and an exact destructive confirmation. Accounts without financial records are erased across operational schemas; accounts with financial records are closed, all sessions are revoked and a configurable retention marker is recorded (ten years by default, pending approval of the definitive retention table).
 - Staff routes enforce `COMMERCIAL`, `LEGAL`, `SUPPORT`, `COLLECTIONS`, `RISK`, `FINANCE`, or `SUPERADMIN` at the API layer.
 - Socket.IO connections authenticate the same session and join user/role rooms through Redis.
 
@@ -59,3 +60,9 @@ Adapters fail closed with `configuration_required` until real credentials and pr
 - Redis adapter shares Socket.IO rooms between API workers.
 - Database pools are capped per schema/process (`DATABASE_POOL_MAX=3`) to protect the shared PostgreSQL server.
 - The initial operating target is 1,500 registered users. Re-test concurrency, database saturation and p95 latency before increasing that target or enabling high-volume campaigns.
+
+## Backups
+
+- Production runs a verified PostgreSQL custom-format backup every day at 03:17 UTC.
+- Backups live outside the application checkout in `/var/backups/luft`, are readable only by root and retain 14 days.
+- Each backup is checked with `pg_restore --list` before its temporary file becomes the final archive.

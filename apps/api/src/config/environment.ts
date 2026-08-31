@@ -18,6 +18,12 @@ const schema = z.object({
   INTERNAL_SERVICE_TOKEN: z.string().min(32),
   SESSION_COOKIE_NAME: z.string().default('luft_session'),
   SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+  FINANCIAL_RECORD_RETENTION_YEARS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(10),
   WEBAUTHN_RP_ID: z.string().min(1),
   WEBAUTHN_RP_NAME: z.string().default('LUFT'),
   WEBAUTHN_ORIGIN: z.string().url(),
