@@ -1,5 +1,7 @@
 # LUFT project map
 
+Last updated: 2026-09-01. Production baseline: `ba0ae99`.
+
 ## Runtime
 
 | Component | Path | Port | Purpose |
@@ -9,7 +11,7 @@
 | Worker | `apps/api/src/worker.ts` | none | Scheduled and queued jobs |
 | Scoring | `services/scoring` | 4004 | Versioned profile/scoring decisions |
 
-Nginx serves `luft.restaurar.co`, routes `/api/*` and `/socket.io/*` to NestJS, and all other traffic to Next.js.
+Nginx serves `luft.restaurar.co` over HTTPS, redirects HTTP to HTTPS, routes `/api/*` and `/socket.io/*` to NestJS, and all other traffic to Next.js.
 
 ## Data boundaries
 
@@ -37,7 +39,7 @@ The final score inquiry is queued automatically when the last installment is con
 
 ## External adapters
 
-- Mercado Pago Orders API + signed webhook.
+- Mercado Pago Orders API + signed webhook. Webhook events are resolved against Mercado Pago's authoritative resource, checked against the expected amount and persisted atomically with idempotent duplicate/refund/reconciliation handling.
 - Truora Digital Identity web flow + webhook/result lookup.
 - Experian DataCrédito and TransUnion/CIFIN contract-gated adapters.
 - Resend email, Evolution WhatsApp, configurable SMS, Web Push and signed n8n webhooks.
@@ -48,6 +50,8 @@ Adapters fail closed with `configuration_required` until real credentials and pr
 
 - Opaque, signed, HTTP-only session cookie with Argon2id passwords.
 - Registration and password recovery through OTP; passkeys through WebAuthn.
+- Tureporte S.A.S., owner of RESTAURAR, is the data controller for LUFT. The canonical privacy and habeas-data policy is published at `https://restaurar.co/privacy`.
+- Until the SMS provider credentials are installed, owner acceptance testing uses `REGISTRATION_MODE=invite`: the API requires a private invite code and reveals the one-time verification code only in the successful registration response. Production public mode never reveals OTP values.
 - Password change revokes every other active session.
 - Account closure requires the current password and an exact destructive confirmation. Accounts without financial records are erased across operational schemas; accounts with financial records are closed, all sessions are revoked and a configurable retention marker is recorded (ten years by default, pending approval of the definitive retention table).
 - Staff routes enforce `COMMERCIAL`, `LEGAL`, `SUPPORT`, `COLLECTIONS`, `RISK`, `FINANCE`, or `SUPERADMIN` at the API layer.

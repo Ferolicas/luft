@@ -23,6 +23,8 @@
 ## Hard rules
 
 - Never commit `.env`, `.env.migrate`, personal data, credentials, generated KYC media, or signed documents.
+- Tureporte S.A.S. owns RESTAURAR and LUFT. Use `https://restaurar.co/privacy` as the canonical privacy and habeas-data policy; do not invent a separate LUFT legal entity.
+- Owner testing without an SMS provider must use private invite mode. Never expose test OTP values in public registration mode.
 - Keep StartIF data out of the LUFT schema. Cross-domain exchange happens through explicit services and recorded consent.
 - Do not fake successful third-party calls. When credentials are absent, return `configuration_required` and preserve the pending workflow.
 - Financial amounts use integer COP values; rates use Decimal, never floating-point persistence.
