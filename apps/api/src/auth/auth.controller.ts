@@ -24,6 +24,11 @@ export class AuthController {
     private readonly config: ConfigService,
   ) {}
 
+  @Get('registration-settings')
+  registrationSettings() {
+    return this.auth.registrationSettings();
+  }
+
   @Post('register')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   register(@Body() body: unknown, @Req() request: Request) {

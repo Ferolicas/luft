@@ -56,11 +56,12 @@ const registrationSchema = z.object({
     .regex(/[a-z]/)
     .regex(/\d/),
   consentAccepted: z.literal(true),
-  consentVersion: z.literal('2026-09-01'),
+  consentVersion: z.literal('2026-09-01-restaurar'),
+  inviteCode: z.string().trim().max(200).optional(),
 });
 
 const CONSENT_TEXT =
-  'Autorizo a LUFT el tratamiento de mis datos personales para crear mi cuenta, verificar mi identidad, personalizar mi educación financiera y gestionar mis solicitudes. Las consultas y reportes ante operadores de información financiera requieren autorizaciones separadas y expresas.';
+  'Autorizo a Tureporte S.A.S., propietaria de RESTAURAR y responsable de LUFT, el tratamiento de mis datos personales para crear mi cuenta, verificar mi identidad, personalizar mi educación financiera y gestionar mis solicitudes, conforme a la política publicada en https://restaurar.co/privacy. Las consultas y reportes ante operadores de información financiera requieren autorizaciones separadas y expresas.';
 
 @Injectable()
 export class AuthService {
@@ -82,14 +83,52 @@ export class AuthService {
     );
   }
 
+  registrationSettings() {
+    return {
+      mode:
+        this.config.get<'closed' | 'invite' | 'public'>('REGISTRATION_MODE') ??
+        'closed',
+      legalPolicyUrl: 'https://restaurar.co/privacy',
+    };
+  }
+
   async register(body: unknown, request: Request) {
     if (this.config.get('LEGAL_DOCUMENTS_READY') !== 'true')
       throw new ServiceUnavailableException({
         code: 'legal_configuration_required',
-        message:
-          'El alta pública se habilitará cuando se publique la identidad legal y la política de tratamiento de datos de LUFT/StartIF.',
+        message: 'La política de tratamiento de datos no está configurada.',
       });
     const input = registrationSchema.parse(body);
+    const registrationMode =
+      this.config.get<'closed' | 'invite' | 'public'>('REGISTRATION_MODE') ??
+      'closed';
+    if (registrationMode === 'closed')
+      throw new ServiceUnavailableException({
+        code: 'registration_closed',
+        message: 'El registro no está habilitado en este momento.',
+      });
+    if (registrationMode === 'public' && !this.integrations.status().sms)
+      throw new ServiceUnavailableException({
+        code: 'configuration_required',
+        provider: 'SMS',
+        message:
+          'El registro público requiere que el proveedor SMS esté configurado.',
+      });
+    if (registrationMode === 'invite') {
+      const configuredCode =
+        this.config.get<string>('REGISTRATION_INVITE_CODE') ?? '';
+      const submittedHash = this.crypto.hash(
+        `registration-invite:${input.inviteCode ?? ''}`,
+      );
+      const configuredHash = this.crypto.hash(
+        `registration-invite:${configuredCode}`,
+      );
+      if (!this.crypto.equals(submittedHash, configuredHash))
+        throw new UnauthorizedException({
+          code: 'invalid_registration_invite',
+          message: 'El código de acceso para las pruebas no es válido.',
+        });
+    }
     const existing = await this.db.identity.user.findFirst({
       where: {
         OR: [
@@ -139,6 +178,7 @@ export class AuthService {
       user.id,
       user.phone,
       'PHONE_VERIFICATION',
+      registrationMode === 'invite',
     );
     await this.audit.record({
       actorUserId: user.id,
@@ -156,6 +196,7 @@ export class AuthService {
     userId: string,
     destination: string,
     purpose: 'PHONE_VERIFICATION' | 'LOGIN' | 'SIGNATURE' | 'PASSWORD_RESET',
+    revealWhenProviderIsMissing = false,
   ) {
     const code = randomInt(100_000, 1_000_000).toString();
     const id = randomUUID();
@@ -174,6 +215,10 @@ export class AuthService {
       challengeId: challenge.id,
       delivery: delivery.status,
       expiresAt: challenge.expiresAt,
+      ...(revealWhenProviderIsMissing &&
+      delivery.status === 'configuration_required'
+        ? { testCode: code }
+        : {}),
     };
   }
 

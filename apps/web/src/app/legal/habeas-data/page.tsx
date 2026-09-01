@@ -1,5 +1,5 @@
-import { LegalPending } from "@/components/legal-pending";
+import { redirect } from "next/navigation";
 
 export default function HabeasDataPage() {
-  return <LegalPending title="Política de habeas data pendiente" />;
+  redirect("https://restaurar.co/privacy");
 }

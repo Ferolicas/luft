@@ -1,5 +1,5 @@
-import { LegalPending } from "@/components/legal-pending";
+import { redirect } from "next/navigation";
 
 export default function PrivacyPage() {
-  return <LegalPending title="Política de privacidad pendiente" />;
+  redirect("https://restaurar.co/privacy");
 }
