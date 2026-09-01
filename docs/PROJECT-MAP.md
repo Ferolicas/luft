@@ -1,6 +1,6 @@
 # LUFT project map
 
-Last updated: 2026-09-01. Production baseline: `ba0ae99`.
+Last updated: 2026-09-01.
 
 ## Runtime
 

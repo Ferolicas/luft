@@ -32,6 +32,10 @@ install -o root -g root -m 700 scripts/backup-production.sh /usr/local/sbin/luft
 install -o root -g root -m 600 deploy/luft-backup.cron /etc/cron.d/luft-backup
 
 pm2 startOrReload ecosystem.config.cjs --update-env
+# PM2's startOrReload can retain values that already existed in a process.
+# Force API and worker environment refreshes so newly installed provider
+# credentials and operational flags take effect on every deployment.
+pm2 restart luft-api luft-worker --update-env
 pm2 save
 
 for attempt in 1 2 3 4 5; do
