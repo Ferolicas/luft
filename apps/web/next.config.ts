@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
           {
             key: "Content-Security-Policy",
-            value: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' wss:; worker-src 'self' blob:; manifest-src 'self'",
+            value: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://restaurar.co; connect-src 'self' wss: https://api.restaurar.co; worker-src 'self' blob:; manifest-src 'self'",
           },
         ],
       },

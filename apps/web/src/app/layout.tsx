@@ -37,7 +37,10 @@ export const viewport: Viewport = { themeColor: "#1354e8", width: "device-width"
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        {children}
+        <script defer src="https://restaurar.co/m.js" data-site="luft" data-exclude="/app,/admin,/login,/verificar,/recuperar,/api" />
+      </body>
     </html>
   );
 }

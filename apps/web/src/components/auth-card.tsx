@@ -218,6 +218,11 @@ export function RegisterForm() {
         "luft_verification",
         JSON.stringify(result.verification),
       );
+      try {
+        (window as unknown as { restaurarTrack?: (n: string, m?: Record<string, string>) => void }).restaurarTrack?.("lead", { form: "registro" });
+      } catch {
+        /* la analítica nunca rompe el formulario */
+      }
       router.push(`/verificar?delivery=${result.verification.delivery}`);
     } catch (cause) {
       setError(errorMessage(cause));
