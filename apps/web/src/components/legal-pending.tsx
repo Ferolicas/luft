@@ -1,5 +1,4 @@
 import { FileClock, ShieldCheck } from "lucide-react";
-import Link from "next/link";
 import { Brand } from "./brand";
 
 export function LegalPending({ title }: { title: string }) {
@@ -27,9 +26,10 @@ export function LegalPending({ title }: { title: string }) {
           autorización para consultar centrales o solicitar crédito se pide de
           forma separada.
         </p>
-        <Link className="button" href="https://restaurar.co/privacy">
+        {/* Enlace externo: <a> y no <Link>, para que Next no haga prefetch (fetch) y choque con connect-src. */}
+        <a className="button" href="https://restaurar.co/privacy">
           Ver política de RESTAURAR
-        </Link>
+        </a>
       </section>
     </main>
   );
