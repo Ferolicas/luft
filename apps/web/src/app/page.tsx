@@ -11,7 +11,7 @@ export default function Home() {
       <header className="public-header">
         <Brand />
         <nav aria-label="Navegación principal"><a href="#ruta">Cómo funciona</a><a href="#seguridad">Seguridad</a></nav>
-        <div className="header-actions"><Link href="/login" className="text-link">Entrar</Link><Link href="/registro" className="button button-small">Comenzar</Link></div>
+        <div className="header-actions"><Link href="/login" className="text-link">Entrar</Link><Link href="/empezar" className="button button-small">Comenzar</Link></div>
       </header>
       <main>
         <section className="hero">
@@ -19,7 +19,7 @@ export default function Home() {
             <span className="eyebrow"><Sparkles size={15} /> Tu historia financiera empieza aquí</span>
             <h1>Tu futuro merece<br /><span>más posibilidades.</span></h1>
             <p>Conoce tu perfil, aprende a tu ritmo y construye un historial financiero que hable bien de ti.</p>
-            <div className="hero-actions"><Link href="/registro" className="button button-large">Crear mi ruta <ArrowRight size={19} /></Link><Link href="/login" className="button button-ghost button-large">Ya tengo cuenta</Link></div>
+            <div className="hero-actions"><Link href="/empezar" className="button button-large">Crear mi ruta <ArrowRight size={19} /></Link><Link href="/login" className="button button-ghost button-large">Ya tengo cuenta</Link></div>
             <div className="trust-line"><span><CheckCircle2 size={17} /> Sin costo para empezar</span><span><ShieldCheck size={17} /> Tus datos protegidos</span></div>
           </div>
           <div className="hero-visual">

@@ -62,6 +62,28 @@ export class CryptoService {
     ]).toString('utf8');
   }
 
+  /** Binary AES-256-GCM envelope: 12-byte IV, 16-byte tag, ciphertext. */
+  encryptBuffer(value: Buffer) {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.key, iv);
+    const ciphertext = Buffer.concat([cipher.update(value), cipher.final()]);
+    return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
+  }
+
+  decryptBuffer(payload: Buffer) {
+    if (payload.length < 28) throw new Error('Dato cifrado inválido');
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      this.key,
+      payload.subarray(0, 12),
+    );
+    decipher.setAuthTag(payload.subarray(12, 28));
+    return Buffer.concat([
+      decipher.update(payload.subarray(28)),
+      decipher.final(),
+    ]);
+  }
+
   equals(left: string, right: string) {
     const a = Buffer.from(left);
     const b = Buffer.from(right);

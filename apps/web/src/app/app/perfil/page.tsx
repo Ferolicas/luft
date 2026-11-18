@@ -1,19 +1,49 @@
 "use client";
 
-import { startRegistration } from "@simplewebauthn/browser";
-import { BellRing, Fingerprint, Flag, KeyRound, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
-import { useSessionUser } from "@/components/app-shell";
-import { Notice } from "@/components/status";
-import { api, errorMessage } from "@/lib/api";
+import { initials, useLuft } from "@/components/luft/shell";
+import { Button, Card, Header, Icon, Screen, Segments, type IconName } from "@/components/luft/ui";
+import { api } from "@/lib/api";
+
+const STAFF = ["COMMERCIAL", "LEGAL", "SUPPORT", "COLLECTIONS", "RISK", "FINANCE", "SUPERADMIN"];
+function Row({ href, icon, title, text }: { href: string; icon: IconName; title: string; text: string }) {
+  return <Link href={href}><span className="l-icon-box"><Icon name={icon} /></span><span className="l-grow"><strong>{title}</strong><small>{text}</small></span><Icon name="chevron_right" /></Link>;
+}
 
 export default function ProfilePage() {
-  const user = useSessionUser(); const router = useRouter(); const [busy, setBusy] = useState(false); const [failure, setFailure] = useState(""); const [message, setMessage] = useState("");
-  async function passkey() { setBusy(true); setFailure(""); try { const first = await api<{ challengeId: string; options: Parameters<typeof startRegistration>[0]["optionsJSON"] }>("/auth/passkeys/registration-options", { method: "POST" }); const response = await startRegistration({ optionsJSON: first.options }); await api("/auth/passkeys/registration-verification", { method: "POST", body: JSON.stringify({ challengeId: first.challengeId, response }) }); setMessage("Tu llave de acceso quedó registrada en este dispositivo."); } catch (cause) { setFailure(errorMessage(cause)); } finally { setBusy(false); } }
-  async function enablePush() { setBusy(true); setFailure(""); try { if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("Este navegador no admite notificaciones push."); const permission = await Notification.requestPermission(); if (permission !== "granted") throw new Error("No autorizaste las notificaciones."); const config = await api<{ enabled: boolean; publicKey: string | null }>("/luft/push/config"); if (!config.enabled || !config.publicKey) throw new Error("Las llaves VAPID están pendientes de configuración."); const registration = await navigator.serviceWorker.ready; const normalized = config.publicKey.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(config.publicKey.length / 4) * 4, "="); const key = Uint8Array.from(atob(normalized), (character) => character.charCodeAt(0)); const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }); await api("/luft/push/subscribe", { method: "POST", body: JSON.stringify(subscription.toJSON()) }); setMessage("Notificaciones activadas en este dispositivo."); } catch (cause) { setFailure(errorMessage(cause)); } finally { setBusy(false); } }
-  async function goal(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setFailure(""); const form = new FormData(event.currentTarget); try { await api("/luft/goals", { method: "POST", body: JSON.stringify({ kind: "PERSONAL", title: form.get("title"), targetCOP: Number(form.get("targetCOP")) || undefined, targetDate: form.get("targetDate") || undefined }) }); event.currentTarget.reset(); setMessage("Tu meta quedó guardada."); } catch (cause) { setFailure(errorMessage(cause)); } finally { setBusy(false); } }
-  async function password(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setFailure(""); setMessage(""); const form = new FormData(event.currentTarget); const newPassword = String(form.get("newPassword") ?? ""); if (newPassword !== form.get("confirmPassword")) { setBusy(false); return setFailure("Las contraseñas nuevas no coinciden."); } try { await api("/auth/password", { method: "PATCH", body: JSON.stringify({ currentPassword: form.get("currentPassword"), newPassword }) }); event.currentTarget.reset(); setMessage("Contraseña actualizada. Las demás sesiones fueron cerradas."); } catch (cause) { setFailure(errorMessage(cause)); } finally { setBusy(false); } }
-  async function closeAccount(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setFailure(""); const form = new FormData(event.currentTarget); try { await api("/auth/account", { method: "DELETE", body: JSON.stringify({ password: form.get("password"), confirmation: form.get("confirmation") }) }); router.replace("/"); router.refresh(); } catch (cause) { setFailure(errorMessage(cause)); setBusy(false); } }
-  return <div className="inner-page"><header className="inner-heading"><div><span className="eyebrow"><UserRound size={14} /> Mi perfil</span><h1>Tu cuenta y tus metas.</h1><p>Administra cómo entras y hacia dónde quieres avanzar.</p></div></header>{message && <Notice type="success">{message}</Notice>}{failure && <Notice type="error">{failure}</Notice>}<div className="settings-grid"><section className="settings-card"><div className="settings-title"><div className="form-icon"><UserRound /></div><div><span>Datos de la cuenta</span><h2>{user?.fullName}</h2></div></div><dl><div><dt>Correo</dt><dd>{user?.email}</dd></div><div><dt>Usuario</dt><dd>@{user?.username}</dd></div><div><dt>Estrato</dt><dd>{user?.stratum}</dd></div><div><dt>Rol</dt><dd>{user?.role.toLowerCase()}</dd></div></dl><Notice type="info"><ShieldCheck size={16} /> Para corregir datos de identidad, crea una solicitud PQR. Así conservamos la trazabilidad.</Notice></section><section className="settings-card"><div className="settings-title"><div className="form-icon"><KeyRound /></div><div><span>Seguridad</span><h2>Acceso y avisos</h2></div></div><p>Usa huella, rostro o PIN del dispositivo. La biometría nunca sale de tu equipo.</p><button className="button button-ghost button-full" onClick={passkey} disabled={busy}><Fingerprint /> Registrar llave de acceso</button><button className="button button-ghost button-full" onClick={enablePush} disabled={busy}><BellRing /> Activar notificaciones</button></section><form className="settings-card standard-form" onSubmit={password}><div className="settings-title"><div className="form-icon"><KeyRound /></div><div><span>Seguridad</span><h2>Cambiar contraseña</h2></div></div><label>Contraseña actual<input name="currentPassword" type="password" autoComplete="current-password" required /></label><label>Nueva contraseña<input name="newPassword" type="password" autoComplete="new-password" minLength={12} required /></label><label>Confirmar nueva contraseña<input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required /></label><button className="button" disabled={busy}>Actualizar contraseña</button></form><form className="settings-card standard-form" onSubmit={goal}><div className="settings-title"><div className="form-icon"><Flag /></div><div><span>Motivación</span><h2>Nueva meta</h2></div></div><label>¿Qué quieres lograr?<input name="title" placeholder="Ej. Comprar mi primer computador" required minLength={3} /></label><label>Valor objetivo (opcional)<input name="targetCOP" type="number" min="0" max="1000000000" step="10000" /></label><label>Fecha objetivo (opcional)<input name="targetDate" type="date" /></label><button className="button" disabled={busy}>Guardar meta</button></form>{user?.role === "USER" && <form className="settings-card standard-form danger-zone" onSubmit={closeAccount}><div className="settings-title"><div className="form-icon"><Trash2 /></div><div><span>Control de tus datos</span><h2>Cerrar y eliminar cuenta</h2></div></div><p>Si no existe relación financiera, eliminaremos tu cuenta y perfil. Si hubo crédito o reporte, cerraremos el acceso y conservaremos únicamente lo exigido por la ley durante el plazo informado.</p><label>Escribe ELIMINAR MI CUENTA<input name="confirmation" required pattern="ELIMINAR MI CUENTA" /></label><label>Confirma tu contraseña<input name="password" type="password" autoComplete="current-password" required /></label><button className="button button-full danger-button" disabled={busy}><Trash2 size={17} /> Cerrar mi cuenta</button></form>}</div></div>;
+  const { user, data } = useLuft();
+  const router = useRouter();
+  const { percent, completed } = data.journey;
+  const since = (user as { createdAt?: string }).createdAt;
+  async function logout() { await api("/auth/logout", { method: "POST" }).catch(() => undefined); router.push("/login"); }
+  return (
+    <Screen>
+      <Header>
+        <div className="l-greeting"><span className="l-avatar lg">{initials(user.fullName)}</span><span className="l-grow"><strong>{user.fullName}</strong><small>{since ? `Miembro desde ${new Date(since).toLocaleDateString("es-CO", { month: "long", year: "numeric" })}` : `@${user.username}`}</small></span></div>
+      </Header>
+      <div className="l-body tabbed">
+        <Card>
+          <div className="l-row between"><span className="l-muted" style={{ fontWeight: 500 }}>Tu perfil financiero</span><strong style={{ fontSize: 24, fontWeight: 700 }}>{percent}%</strong></div>
+          <Segments total={4} done={completed} />
+          <p className="l-muted">{percent === 100 ? "Tu perfil está completo. Actualízalo cuando cambie tu trabajo, tus ingresos o tus bienes." : "Suma información que hoy no aparece en tu historial: arriendo, seguridad social, ingresos y patrimonio."}</p>
+          <Button href="/app/perfil/financiero" arrow>{percent === 0 ? "Completar mi perfil" : "Actualizar información"}</Button>
+        </Card>
+        <div className="l-section-title"><h2 style={{ fontSize: 16 }}>Trámites</h2></div>
+        <Card className="flush"><div className="l-list">
+          <Row href="/app/renta" icon="receipt_long" title="Declaración de renta" text="Revisa si debes declarar y prepárate" />
+          <Row href="/app/puntaje" icon="speed" title="Mi puntaje" text="Tu punto de partida y su evolución" />
+          <Row href="/app/credito" icon="account_balance_wallet" title="Mi crédito" text="Solicitud, plan y estado" />
+        </div></Card>
+        <div className="l-section-title"><h2 style={{ fontSize: 16 }}>Mi cuenta</h2></div>
+        <Card className="flush"><div className="l-list">
+          <Row href="/app/perfil/cuenta" icon="person" title="Datos personales" text="Nombre, usuario y contacto" />
+          <Row href="/app/perfil/cuenta#seguridad" icon="lock" title="Seguridad y acceso" text="Clave, biometría y avisos" />
+          <Row href="/app/pqr" icon="help" title="Ayuda y PQR" text={data.openPqr ? `${data.openPqr} solicitud${data.openPqr === 1 ? "" : "es"} en curso` : "Peticiones, quejas y reclamos"} />
+          {STAFF.includes(user.role) && <Row href="/admin" icon="bar_chart" title="Operación" text="Panel interno del equipo" />}
+          <button onClick={logout}><span className="l-icon-box gray"><Icon name="logout" /></span><span className="l-grow"><strong>Cerrar sesión</strong></span></button>
+        </div></Card>
+      </div>
+    </Screen>
+  );
 }

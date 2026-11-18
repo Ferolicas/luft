@@ -1,3 +1,5 @@
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   BadRequestException,
   ConflictException,
@@ -552,6 +554,12 @@ export class AuthService {
       this.db.luft.financialProfile.deleteMany({ where: { userId: user.id } }),
       this.db.luft.consent.deleteMany({ where: { userId: user.id } }),
     ]);
+    const storage = this.config.get<string>('PRIVATE_STORAGE_PATH');
+    if (storage)
+      await rm(join(storage, 'documents', user.id), {
+        recursive: true,
+        force: true,
+      });
     await this.db.identity.user.delete({ where: { id: user.id } });
     response.clearCookie(this.cookieName, { path: '/' });
     return { ok: true, deleted: true };

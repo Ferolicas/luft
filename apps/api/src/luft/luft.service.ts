@@ -9,6 +9,8 @@ import { DatabaseService } from '../database/database.service';
 import { IntegrationService } from '../integrations/integration.service';
 import { QueueService } from '../integrations/queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { progressSummary } from './journey';
+import { JourneyService } from './journey.service';
 
 const CONSENTS: Record<string, string> = {
   BUREAU_QUERY:
@@ -29,6 +31,7 @@ export class LuftService {
     private readonly queues: QueueService,
     private readonly realtime: RealtimeService,
     private readonly config: ConfigService,
+    private readonly journey: JourneyService,
   ) {}
 
   pushConfig() {
@@ -89,13 +92,49 @@ export class LuftService {
         .filter((item) => item.completedAt)
         .map((item) => `${item.moduleId}:${item.lessonKey}`),
     );
+    const journey = this.journey.summarize(
+      JourneyService.readState(profile?.demographicAnswers),
+    );
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const completedModules = modules.filter((module) => {
+      const lessons = Array.isArray(module.lessons) ? module.lessons : [];
+      return (
+        lessons.length > 0 &&
+        [...completedLessons].filter((key) => key.startsWith(module.id))
+          .length >= lessons.length
+      );
+    }).length;
+    const progressView = progressSummary({
+      completedLessons: completedLessons.size,
+      completedModules,
+      lessonsThisWeek: progress.filter(
+        (item) => item.completedAt && item.completedAt.getTime() >= weekAgo,
+      ).length,
+      streakDays: streak?.currentDays ?? 0,
+      creditActive: Boolean(application?.loan),
+      installments: application?.loan?.installments ?? [],
+      profileBlocksCompleted: journey.completed,
+      documentsUploaded: new Set(journey.documents.map((item) => item.kind))
+        .size,
+    });
+    const { demographicAnswers: _private, ...publicProfile } = profile ?? {
+      demographicAnswers: null,
+      currentScore: null,
+      archetype: null,
+      completionPercent: 0,
+    };
+    void _private;
     return {
       user,
-      profile: profile ?? {
-        currentScore: null,
-        archetype: null,
-        completionPercent: 10,
-      },
+      journey,
+      progress: progressView,
+      profile: profile
+        ? publicProfile
+        : {
+            currentScore: null,
+            archetype: null,
+            completionPercent: 0,
+          },
       streak: streak ?? { currentDays: 0, longestDays: 0 },
       goals: goals.map((goal) => ({
         ...goal,
@@ -227,6 +266,13 @@ export class LuftService {
       consistency: Number(input.answers.consistency ?? 0),
       riskAwareness: Number(input.answers.riskAwareness ?? 0),
     };
+    const previous = await this.db.luft.financialProfile.findUnique({
+      where: { userId: user.id },
+    });
+    const merged = {
+      ...JourneyService.readState(previous?.demographicAnswers),
+      questionnaire: input.answers,
+    } as object;
     const [response, result, profile] = await this.db.luft.$transaction([
       this.db.luft.questionnaireResponse.create({
         data: {
@@ -249,14 +295,9 @@ export class LuftService {
         create: {
           userId: user.id,
           archetype,
-          demographicAnswers: input.answers,
-          completionPercent: 45,
+          demographicAnswers: merged,
         },
-        update: {
-          archetype,
-          demographicAnswers: input.answers,
-          completionPercent: { increment: 25 },
-        },
+        update: { archetype, demographicAnswers: merged },
       }),
     ]);
     await this.db.scoring.scoreResult.create({

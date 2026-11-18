@@ -1,5 +1,5 @@
-const CACHE = "luft-shell-v1";
-const SHELL = ["/", "/login", "/registro", "/icon.svg"];
+const CACHE = "luft-shell-v2";
+const SHELL = ["/", "/login", "/empezar", "/registro", "/icon.svg"];
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL))));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))));
 self.addEventListener("fetch", (event) => {

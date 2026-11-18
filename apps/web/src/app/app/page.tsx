@@ -1,23 +1,111 @@
 "use client";
 
-import { ArrowRight, BookOpen, ChevronRight, Flame, Route, Sparkles, Target } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
-import { Notice, Spinner } from "@/components/status";
-import { useDashboard } from "@/hooks/use-dashboard";
+import { useEffect, useState } from "react";
+import { firstName, initials, useLuft } from "@/components/luft/shell";
+import { Bar, Button, Card, Chip, Header, Icon, Lufty, Screen, Sheet, type IconName } from "@/components/luft/ui";
 import { money } from "@/lib/api";
+import { isSettled, nextInstallment, statusLabel } from "@/lib/credit";
+import { daysUntil, longDate } from "@/lib/journey";
 
-export default function DashboardPage() {
-  const { data, error } = useDashboard();
-  if (error) return <Notice type="error">{error}</Notice>; if (!data) return <Spinner label="Preparando tu inicio…" />;
-  const name = data.user.fullName.split(" ")[0]; const score = data.profile.currentScore; const nextModule = data.learning.find((module) => module.completedLessons < module.lessons.length) ?? data.learning[0];
-  return <div className="dashboard-page"><div className="page-intro"><div><span className="eyebrow"><Sparkles size={14} /> Tu ruta financiera</span><h1>Hola, {name}. <span>Sigamos avanzando.</span></h1><p>Cada decisión de hoy le abre espacio a una oportunidad mañana.</p></div><div className="streak-pill"><Flame size={19} /><span><strong>{data.streak.currentDays} días</strong> de constancia</span></div></div>
-    <section className="dashboard-grid"><article className="score-card"><div className="card-title"><div><span>Mi puntaje</span><h2>Tu punto de partida</h2></div><Link href="/app/diagnostico">Ver diagnóstico <ChevronRight size={16} /></Link></div><div className="score-main"><div className="score-ring" style={{ "--score": `${Math.max(8, ((score ?? 0) / 900) * 100)}%` } as React.CSSProperties}><div><strong>{score ?? "—"}</strong><span>de 900</span></div></div><div className="score-copy"><span className={`status-dot ${score ? "ready" : ""}`}>{score ? "Diagnóstico activo" : "Pendiente de consulta"}</span><h3>{score ? "Ya tienes una base para crecer." : "Conoce dónde empiezas."}</h3><p>{score ? "Mantén tus hábitos y completa tu ruta para medir la evolución." : "Completa el diagnóstico y autoriza la consulta cuando estés listo."}</p><Link className="text-action" href="/app/diagnostico">{score ? "Entender mi puntaje" : "Comenzar diagnóstico"} <ArrowRight size={16} /></Link></div></div></article>
-      <article className="profile-progress-card"><span>Tu perfil LUFT</span><div className="profile-number">{Math.min(100, data.profile.completionPercent)}<small>%</small></div><div className="progress-track"><i style={{ width: `${Math.min(100, data.profile.completionPercent)}%` }} /></div><p>{data.profile.archetype ? <>Eres <strong>{data.profile.archetype.toLowerCase()}</strong>. Sigue completando pasos para personalizar tu ruta.</> : "Aún estamos conociéndote. Tu primer diagnóstico desbloquea la ruta."}</p><Link href="/app/diagnostico">Completar mi perfil <ChevronRight size={16} /></Link></article>
-    </section>
-    <section className="content-grid"><div><div className="section-row"><div><span>Continúa aprendiendo</span><h2>Un paso corto. Un cambio real.</h2></div><Link href="/app/aprender">Ver todos</Link></div>{nextModule ? <article className="learning-feature"><div className="learning-icon"><BookOpen /></div><div><span>Módulo {nextModule.slug.split("-")[0] === "conoce" ? "1" : "en curso"} · {nextModule.durationMin} min</span><h3>{nextModule.title}</h3><p>{nextModule.description}</p><div className="mini-progress"><i style={{ width: `${(nextModule.completedLessons / nextModule.lessons.length) * 100}%` }} /></div></div><Link href="/app/aprender" className="circle-action" aria-label="Continuar módulo"><ArrowRight /></Link></article> : <Notice>Los módulos se cargarán al terminar la configuración inicial.</Notice>}</div>
-      <aside className="goal-card"><div className="goal-icon"><Target /></div><span>Mi meta principal</span>{data.goals[0] ? <><h3>{data.goals[0].title}</h3><strong>{data.goals[0].targetCOP ? money(data.goals[0].targetCOP) : `${data.goals[0].progress}%`}</strong><div className="progress-track"><i style={{ width: `${data.goals[0].progress}%` }} /></div></> : <><h3>Define lo que quieres lograr</h3><p>Una meta concreta hace más clara tu ruta.</p></>}<Link href="/app/perfil">{data.goals[0] ? "Actualizar meta" : "Crear una meta"} <ArrowRight size={16} /></Link></aside>
-    </section>
-    <section className="route-banner"><div><Route size={28} /><span>Tu siguiente hito</span><h2>{data.credit ? "Construye seis meses de buen comportamiento" : "Prepárate para tu ruta StartIF"}</h2><p>{data.credit ? `Estado actual: ${data.credit.status.replaceAll("_", " ").toLowerCase()}.` : "Completa tu perfil, aprende y solicita cuando estés listo."}</p><Link href="/app/credito" className="button button-light">Ver mi ruta <ArrowRight size={17} /></Link></div><Image src="/images/luft-explorer.png" alt="Exploradora LUFT" width={600} height={760} sizes="360px" /></section>
-  </div>;
+const TIPS: Array<{ title: string; text: string; icon: IconName; color: string; ink: string }> = [
+  { title: "Paga antes de la fecha límite", text: "Programa un recordatorio 3 días antes. Pagar a tiempo es lo que más pesa en tu historial.", icon: "schedule", color: "var(--l-blue-500)", ink: "var(--l-blue-500)" },
+  { title: "Usa menos del 30% de tu cupo", text: "Si tienes tarjeta, mantener su uso bajo muestra que manejas bien tu crédito.", icon: "percent", color: "var(--l-violet-400)", ink: "var(--l-violet-600)" },
+  { title: "Evita pedir varios créditos a la vez", text: "Muchas solicitudes seguidas pueden verse como riesgo para las entidades.", icon: "gpp_maybe", color: "var(--l-green-300)", ink: "var(--l-green-500)" },
+];
+const INVITE_KEY = "luft_profile_invite_seen";
+
+function greeting() { const hour = new Date().getHours(); return hour < 12 ? "Buenos días," : hour < 19 ? "Buenas tardes," : "Buenas noches,"; }
+
+export default function HomePage() {
+  const { user, data } = useLuft();
+  const { credit, progress, journey } = data;
+  const next = nextInstallment(credit);
+  const installments = credit?.loan?.installments ?? [];
+  const [invite, setInvite] = useState(false);
+  useEffect(() => { try { if (journey.percent === 0 && credit?.loan && !localStorage.getItem(INVITE_KEY)) setInvite(true); } catch { /* sin almacenamiento */ } }, [journey.percent, credit?.loan]);
+  const closeInvite = () => { setInvite(false); try { localStorage.setItem(INVITE_KEY, "1"); } catch { /* sin almacenamiento */ } };
+  const overdue = installments.some((row) => row.status === "OVERDUE");
+  const days = next ? daysUntil(next.dueDate) : 0;
+  const levelSpan = progress.nextLevelXp - progress.floorXp;
+
+  return (
+    <Screen>
+      <Header>
+        <div className="l-greeting">
+          <span className="l-avatar">{initials(user.fullName)}</span>
+          <span className="l-grow"><small>{greeting()}</small><strong>{firstName(user.fullName)}</strong></span>
+          <Link href="/app/pqr" className="l-round" aria-label="Ayuda y solicitudes"><Icon name="help" /></Link>
+        </div>
+      </Header>
+      <div className="l-body tabbed" style={{ gap: 28 }}>
+        <Card>
+          <div className="l-row between">
+            <span className="l-row" style={{ gap: 8, fontSize: 14, fontWeight: 500, color: "var(--l-n-600)" }}><span className="l-icon-box sm"><Icon name="account_balance_wallet" size={16} /></span>Tu crédito LUFT</span>
+            {credit?.loan ? <Chip tone={overdue ? "red" : "green"} dot>{overdue ? "En mora" : next ? "Al día" : "Completado"}</Chip> : credit ? <Chip tone="blue" dot>{statusLabel(credit.status)}</Chip> : null}
+          </div>
+          {next ? <>
+            <div><span className="l-small">Próxima cuota</span><div className="l-big-number">{money(next.amountCOP)}</div><span className="l-small" style={{ fontWeight: 500 }}>Vence el {longDate(next.dueDate)} · {days > 0 ? `en ${days} día${days === 1 ? "" : "s"}` : days === 0 ? "hoy" : `hace ${-days} día${days === -1 ? "" : "s"}`}</span></div>
+            <div className="l-row" style={{ gap: 10 }}><Button variant="secondary" href="/app/historial">Ver mi historial</Button><Button href="/app/pagar">Pagar cuota</Button></div>
+          </> : credit?.loan ? <>
+            <div><div className="l-big-number" style={{ fontSize: 28 }}>¡Plan completado!</div><span className="l-muted">Pagaste todas tus cuotas. Tu historial lo refleja.</span></div>
+            <Button variant="secondary" href="/app/historial">Ver mi historial</Button>
+          </> : credit ? <>
+            <div><div className="l-big-number" style={{ fontSize: 28 }}>{money(credit.amountCOP)}</div><span className="l-muted">Solicitud a {credit.termMonths} meses · {statusLabel(credit.status).toLowerCase()}</span></div>
+            <Button href="/app/credito" arrow>Continuar mi solicitud</Button>
+          </> : <>
+            <div><div className="l-big-number" style={{ fontSize: 28 }}>Tu primer crédito</div><span className="l-muted">Un monto pensado para empezar a construir tu historial, paso a paso.</span></div>
+            <div className="l-row" style={{ gap: 10 }}><Button variant="secondary" href="/app/puntaje">Mi puntaje</Button><Button href="/app/credito">Conocerlo</Button></div>
+          </>}
+        </Card>
+
+        <nav className="l-shortcuts" aria-label="Accesos rápidos">
+          <Link href={next ? "/app/pagar" : "/app/credito"}><span><Icon name="account_balance_wallet" size={24} /></span>{next ? "Pagar" : "Crédito"}</Link>
+          <Link href="/app/historial"><span><Icon name="task" size={24} /></span>Historial</Link>
+          <Link href="/app/aprender"><span><Icon name="eco" size={24} /></span>Aprender</Link>
+          <Link href="/app/perfil"><span><Icon name="person" size={24} /></span>Mi perfil</Link>
+        </nav>
+
+        <section className="l-stack">
+          <div className="l-section-title"><h2>Tu progreso</h2><Link href="/app/progreso">Ver todo</Link></div>
+          <Card className="tight">
+            <div className="l-row between"><Chip tone="blue" large icon="verified_user_fill">Nivel {progress.level}</Chip><Chip tone="amber" large icon="local_fire_department_fill">{progress.streakDays}</Chip></div>
+            <Bar value={((progress.xp - progress.floorXp) / levelSpan) * 100} tone="violet" label="Experiencia del nivel" />
+            <span className="l-small">{progress.toNext} XP para el Nivel {progress.level + 1}</span>
+            {installments.length > 0 && <>
+              <div className="l-ladder" aria-hidden="true">{installments.map((row, index) => <i key={row.id} className={isSettled(row) ? "paid" : row.id === next?.id ? "current" : index === installments.length - 1 ? "goal" : ""} style={{ height: `${28 + (index / Math.max(1, installments.length - 1)) * 72}%` }}>{isSettled(row) ? <Icon name="check" size={12} /> : index === installments.length - 1 ? <Icon name="flag" size={12} /> : null}</i>)}</div>
+              <span className="l-small" style={{ fontWeight: 500 }}>{progress.installmentsPaid} de {progress.installmentsTotal} cuotas pagadas</span>
+            </>}
+          </Card>
+        </section>
+
+        <section className="l-stack">
+          <div className="l-section-title"><div><h2>Tips de Lufty</h2><span className="l-small">Desliza para ver más</span></div></div>
+          <div className="l-carousel">
+            {TIPS.map((tip, index) => (
+              <article className="l-tipcard" key={tip.title}>
+                <div className="art" style={{ background: tip.color }}><Lufty mood={index === 0 ? "wink" : "happy"} tone="white" width={124} /><span><Icon name={tip.icon} size={28} /></span></div>
+                <div className="copy"><span className="l-overline" style={{ color: tip.ink }}>Tip {index + 1} de {TIPS.length}</span><h3>{tip.title}</h3><p className="l-muted">{tip.text}</p></div>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      {invite && (
+        <Sheet onClose={closeInvite} title="Dale más contexto a tu historial">
+          <div style={{ borderRadius: 20, padding: "28px 20px", background: "var(--l-gradient)", color: "#fff", display: "flex", alignItems: "center", gap: 12 }}>
+            <strong style={{ flex: 1, fontSize: 20, lineHeight: "26px", fontWeight: 500 }}>Dale más contexto a tu historial</strong><Lufty tone="white" width={110} />
+          </div>
+          <p className="l-muted">Suma información que tu historial no muestra y las entidades pueden tener en cuenta al evaluarte.</p>
+          <div className="l-tiles" style={{ gap: 8 }}>
+            {([["home", "Vivienda"], ["verified_user", "Ocupación"], ["account_balance_wallet", "Mis ingresos"], ["trending_up", "Mis bienes"]] as Array<[IconName, string]>).map(([icon, label]) => <div key={label} style={{ boxShadow: "none", background: "var(--l-n-100)", display: "flex", alignItems: "center", fontSize: 14, color: "var(--l-n-900)" }}><Icon name={icon} className="l-link" />{label}</div>)}
+          </div>
+          <Button href="/app/perfil/financiero" arrow onClick={closeInvite}>Completar mi perfil</Button>
+          <button className="l-link-button" onClick={closeInvite}>Más tarde</button>
+          <p className="l-fine">No garantiza la aprobación de un crédito: cada entidad evalúa con sus propios criterios.</p>
+        </Sheet>
+      )}
+    </Screen>
+  );
 }

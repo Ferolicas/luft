@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import { DM_Sans } from "next/font/google";
 import "./globals.css";
+import "./luft.css";
+
+const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "700"], variable: "--font-dm-sans", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://luft.restaurar.co"),
@@ -32,11 +36,11 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport: Viewport = { themeColor: "#1354e8", width: "device-width", initialScale: 1, maximumScale: 1, viewportFit: "cover" };
+export const viewport: Viewport = { themeColor: "#1342d3", width: "device-width", initialScale: 1, maximumScale: 1, viewportFit: "cover" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es">
+    <html lang="es" className={dmSans.variable}>
       <body>
         {children}
         <script defer src="https://restaurar.co/m.js" data-site="luft" data-exclude="/app,/admin,/login,/verificar,/recuperar,/api" />
