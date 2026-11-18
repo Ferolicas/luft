@@ -17,6 +17,12 @@ set -a
 . "$APP_DIR/.env.migrate"
 set +a
 
+# El servidor siempre corre en producción. Se fija aquí, después de cargar
+# .env, porque el entorno del shell prevalece sobre ecosystem.config.cjs en
+# `pm2 --update-env`; así un valor equivocado en .env no desactiva la cookie
+# de sesión segura ni vuelve a exponer /docs del servicio de scoring.
+export NODE_ENV=production
+
 pnpm install --frozen-lockfile
 pnpm db:generate
 pnpm db:migrate
