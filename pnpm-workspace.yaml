@@ -30,3 +30,11 @@ overrides:
   zod: '>=4.6.7'
   glob@>=9: '>=14.0.6'
   minimatch@>=7: '>=11.0.9'
+
+# GHSA-fc5q-39xc-vjpf (picomatch) fue RETIRADO por GitHub el 2026-11-18: los
+# mantenedores determinaron que no es un problema de seguridad y no habrá
+# versión "corregida". El registro de npm aún lo lista; quitar esta excepción
+# cuando deje de aparecer en `pnpm audit`.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-fc5q-39xc-vjpf
