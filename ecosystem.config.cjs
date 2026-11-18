@@ -41,7 +41,7 @@ module.exports = {
       script: ".venv/bin/uvicorn",
       args: "app.main:app --host 127.0.0.1 --port 4004 --workers 2",
       interpreter: "none",
-      env: { PYTHONUNBUFFERED: "1" },
+      env: { PYTHONUNBUFFERED: "1", NODE_ENV: "production" },
       max_restarts: 10,
       restart_delay: 3000,
       max_memory_restart: "512M",
