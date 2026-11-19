@@ -30,7 +30,7 @@ export default function HomePage() {
   const levelSpan = progress.nextLevelXp - progress.floorXp;
 
   return (
-    <Screen>
+    <Screen className="d-home">
       <Header>
         <div className="l-greeting">
           <span className="l-avatar">{initials(user.fullName)}</span>

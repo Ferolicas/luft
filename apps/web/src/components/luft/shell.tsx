@@ -7,6 +7,7 @@ import { io, type Socket } from "socket.io-client";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import type { DashboardData } from "@/lib/types";
 import type { SessionUser } from "../app-shell";
+import { DesktopNav } from "./desktop";
 import { Alert, Icon, Loading, Screen, type IconName } from "./ui";
 
 interface LuftContext { user: SessionUser; data: DashboardData; reload: () => Promise<void>; notify: (message: string) => void }
@@ -66,12 +67,16 @@ export function LuftShell({ children }: { children: React.ReactNode }) {
     for (const [event, text] of Object.entries(EVENT_TEXT)) socket.on(event, () => { if (event !== "profile:updated") notify(text); void reload(); });
     return () => { socket.disconnect(); };
   }, [user, reload, notify]);
-  if (!user || !data) return <Screen>{failure ? <div className="l-body" style={{ paddingTop: 48 }}><Alert>{failure}</Alert><button className="l-link-button" onClick={() => window.location.reload()}>Reintentar</button></div> : <Loading label="Abriendo tu camino…" />}</Screen>;
+  const logout = async () => { await api("/auth/logout", { method: "POST" }).catch(() => undefined); router.push("/login"); };
+  if (!user || !data) return <div className="l-shell l-shell-loading"><Screen>{failure ? <div className="l-body" style={{ paddingTop: 48 }}><Alert>{failure}</Alert><button className="l-link-button" onClick={() => window.location.reload()}>Reintentar</button></div> : <Loading label="Abriendo tu camino…" />}</Screen></div>;
   return (
     <Context.Provider value={{ user, data, reload, notify }}>
-      {toast && <div className="l-toast" role="status">{toast}</div>}
-      {children}
-      {TABS.some((tab) => tab.href === pathname) && <div className="l-app" style={{ minHeight: 0 }}><TabBar /></div>}
+      <div className="l-shell">
+        <DesktopNav name={user.fullName} initials={initials(user.fullName)} username={user.username} openPqr={data.openPqr} onLogout={logout} />
+        {toast && <div className="l-toast" role="status">{toast}</div>}
+        {children}
+        {TABS.some((tab) => tab.href === pathname) && <div className="l-app" style={{ minHeight: 0 }}><TabBar /></div>}
+      </div>
     </Context.Provider>
   );
 }

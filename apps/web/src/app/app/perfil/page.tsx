@@ -18,7 +18,7 @@ export default function ProfilePage() {
   const since = (user as { createdAt?: string }).createdAt;
   async function logout() { await api("/auth/logout", { method: "POST" }).catch(() => undefined); router.push("/login"); }
   return (
-    <Screen>
+    <Screen className="d-profile">
       <Header>
         <div className="l-greeting"><span className="l-avatar lg">{initials(user.fullName)}</span><span className="l-grow"><strong>{user.fullName}</strong><small>{since ? `Miembro desde ${new Date(since).toLocaleDateString("es-CO", { month: "long", year: "numeric" })}` : `@${user.username}`}</small></span></div>
       </Header>

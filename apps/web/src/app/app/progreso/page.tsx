@@ -14,7 +14,7 @@ export default function ProgressPage() {
   const next = nextInstallment(credit);
   const percent = ((progress.xp - progress.floorXp) / (progress.nextLevelXp - progress.floorXp)) * 100;
   return (
-    <Screen>
+    <Screen className="d-progress">
       <Header topTitle="Mi progreso">
         <div className="l-level-ring" style={{ "--p": percent } as React.CSSProperties}><Lufty tone="white" width={88} /></div>
         <span className="l-level-tag"><Icon name="verified_user" size={14} />NIVEL {progress.level}</span>

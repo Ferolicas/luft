@@ -17,7 +17,7 @@ export default function LearnPage() {
   const lesson = current?.lessons[current.completedLessons];
   const completed = modules.filter((_, index) => done(index)).length;
   return (
-    <Screen>
+    <Screen className="d-learn">
       <Header title={<span style={{ fontSize: 24 }}>Aprender</span>} subtitle="Escuela LUFT · aprende a tu ritmo" />
       <div className="l-body tabbed">
         <Card className="tight"><div className="l-row"><span className="l-avatar lg"><Lufty mood="neutral" width={40} /></span><div className="l-grow l-stack" style={{ gap: 6 }}><strong style={{ fontWeight: 500 }}>{data.streak.currentDays > 0 ? `¡Vas muy bien, ${firstName(user.fullName)}!` : `Empecemos, ${firstName(user.fullName)}`}</strong><span className="l-small">{data.streak.currentDays} día{data.streak.currentDays === 1 ? "" : "s"} de racha · {data.progress.xp} XP</span><Bar value={Math.min(100, data.streak.currentDays * 20)} tone="amber" label="Racha" /></div></div></Card>

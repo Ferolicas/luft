@@ -1,0 +1,177 @@
+/*
+ * LUFT — variante de escritorio.
+ *
+ * Nace de la versión móvil (luft.css), que es la única referencia y NO se modifica:
+ * mismos tokens, mismos componentes y mismo marcado. Todo lo que hay aquí vive dentro
+ * de `@media (min-width: 1024px)`, así que por debajo de ese ancho la app se ve
+ * exactamente igual que antes. Las dos únicas reglas fuera del media query ocultan
+ * las piezas que solo existen en escritorio.
+ */
+.l-sidenav, .l-auth-aside { display: none; }
+
+@media (min-width: 1024px) {
+  /* ───────── Piezas compartidas ───────── */
+  .l-d-brand { display: inline-flex; align-items: center; gap: 12px; color: #fff; font-size: 24px; font-weight: 700; letter-spacing: .04em; text-decoration: none; }
+  .l-d-brand:focus-visible, .l-sidenav :focus-visible, .l-auth-aside :focus-visible { outline: 3px solid var(--l-blue-200); outline-offset: 2px; }
+
+  /* ───────── App autenticada: barra lateral + lienzo ───────── */
+  .l-shell { --d-side: 256px; display: flow-root; min-height: 100dvh; padding-left: var(--d-side); background: var(--l-n-100); }
+  .l-shell.l-shell-loading { padding-left: 0; }
+  .l-shell .l-app { background: transparent; }
+  .l-shell .l-tabbar { display: none; }
+
+  .l-sidenav { position: fixed; z-index: 20; inset: 0 auto 0 0; width: var(--d-side); display: flex; flex-direction: column; gap: 28px; padding: 28px 16px 16px; overflow: hidden auto; background: var(--l-gradient); color: #fff; font-family: var(--l-font); line-height: 1.3; -webkit-font-smoothing: antialiased; }
+  .l-sidenav::before { content: ""; position: absolute; left: -120px; bottom: 90px; width: 373px; height: 168px; background: url(/luft/logo-mark.svg) center / contain no-repeat; opacity: .1; transform: rotate(-56deg); pointer-events: none; }
+  .l-sidenav > * { position: relative; }
+  .l-sidenav *, .l-sidenav *::before { box-sizing: border-box; }
+  .l-sidenav .l-d-brand { padding: 0 12px; }
+  .l-sidenav nav { display: grid; gap: 4px; }
+  .l-sidenav .l-d-label { padding: 0 16px 6px; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--l-blue-100); }
+  .l-sidenav nav a { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 16px; border-radius: 999px; font-size: 15px; font-weight: 500; color: #fff; text-decoration: none; transition: background .15s ease, color .15s ease; }
+  .l-sidenav nav a .l-icon { flex: none; }
+  .l-sidenav nav a span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .l-sidenav nav a i { flex: none; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center; background: var(--l-amber-300); color: var(--l-n-900); font-size: 12px; font-style: normal; font-weight: 700; }
+  .l-sidenav nav a[aria-current="page"] { background: #fff; color: var(--l-blue-500); box-shadow: 0 8px 24px rgba(4, 27, 98, .3); }
+  .l-sidenav .l-d-user { margin-top: auto; display: flex; align-items: center; gap: 4px; padding: 8px; border-radius: 20px; background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .16); }
+  .l-sidenav .l-d-me { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 4px; border-radius: 14px; color: #fff; text-decoration: none; }
+  .l-sidenav .l-d-me > span:last-child { min-width: 0; }
+  .l-sidenav .l-d-me strong, .l-sidenav .l-d-me small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .l-sidenav .l-d-me strong { font-size: 14px; font-weight: 500; }
+  .l-sidenav .l-d-me small { font-size: 12px; color: var(--l-blue-100); }
+  .l-sidenav .l-d-me .l-avatar { width: 40px; height: 40px; font-size: 14px; }
+  .l-sidenav .l-d-user button { flex: none; width: 40px; height: 40px; border: 0; border-radius: 999px; display: grid; place-items: center; background: none; color: #fff; cursor: pointer; transition: background .15s ease; }
+
+  /* Lienzo: la pantalla deja de ser una columna de teléfono */
+  .l-shell .l-screen { max-width: 792px; padding: 32px 32px 0; background: transparent; box-shadow: none; overflow-x: visible; }
+  .l-shell .l-header { padding: 28px 32px 88px; border-radius: 28px; }
+  .l-shell .l-header.flat { padding-bottom: 32px; margin-bottom: 24px; }
+  .l-shell .l-header h1 { font-size: 28px; line-height: 36px; }
+  .l-shell .l-header p { font-size: 16px; line-height: 21px; }
+  .l-shell .l-header::before { right: -90px; top: 10px; width: 460px; height: 208px; }
+  .l-shell .l-body { gap: 20px; padding: 0 28px 32px; }
+  .l-shell .l-body.tabbed { padding-bottom: 48px; }
+  .l-shell .l-plain-top, .l-shell .l-quiz-top { padding: 0 28px; }
+  .l-shell .l-quiz-top { margin-bottom: 24px; }
+  .l-shell .l-footer { padding: 16px 28px 24px; background: linear-gradient(180deg, rgba(241, 244, 249, 0) 0, var(--l-n-100) 22%); }
+  .l-shell .l-footer > :is(.l-btn, .l-row) { width: 100%; max-width: 440px; justify-self: center; }
+  .l-shell .l-footer small .l-icon { display: inline-block; vertical-align: -2px; }
+  .l-shell .l-toast { left: calc(50% + var(--d-side) / 2); top: 24px; }
+  .l-shell .l-loading { min-height: calc(100dvh - 64px); }
+
+  /* Pantallas azules (celebraciones, lecciones): una tarjeta centrada sobre el lienzo */
+  .l-shell .l-screen.blue { max-width: 560px; min-height: calc(100dvh - 64px); margin: 32px auto; padding: 0; border-radius: 32px; background: var(--l-gradient); box-shadow: 0 24px 60px rgba(4, 27, 98, .28); overflow: hidden; }
+  .l-shell .l-screen.blue .l-footer { padding: 16px 24px 24px; background: none; }
+  .l-shell .l-celebrate { padding-top: 48px; }
+  .l-shell .l-story { padding: 24px 24px 28px; }
+  .l-shell .l-feedback { bottom: 16px; margin: auto 0 0; border-radius: 24px; padding: 20px 24px; box-shadow: var(--l-shadow-raised); }
+  .l-shell .l-feedback .l-btn { max-width: 440px; justify-self: center; }
+
+  /* Las rejillas ganan aire en el ancho de escritorio */
+  .l-shell .l-carousel { margin: 0 -28px; padding: 4px 28px 12px; scrollbar-width: thin; scrollbar-color: var(--l-n-300) transparent; }
+  .l-shell .l-carousel::-webkit-scrollbar { display: block; height: 8px; }
+  .l-shell .l-carousel::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--l-n-300); }
+  .l-shell .l-medals { grid-template-columns: repeat(6, 1fr); }
+  .l-shell .l-medals img { width: 80px; }
+
+  /* Hoja inferior → diálogo centrado */
+  .l-sheet-backdrop { align-items: center; padding: 24px; }
+  .l-sheet { max-width: 480px; max-height: calc(100dvh - 48px); padding: 28px; border-radius: 28px; box-shadow: 0 24px 60px rgba(4, 27, 98, .35); }
+  .l-sheet::before { display: none; }
+
+  /* ───────── Pantallas públicas: panel de marca + formulario ───────── */
+  .l-auth { display: grid; grid-template-columns: minmax(400px, 42%) minmax(0, 1fr); min-height: 100dvh; background: var(--l-n-50); }
+  .l-auth-aside { position: sticky; top: 0; height: 100dvh; display: flex; flex-direction: column; gap: 32px; padding: 40px 48px; overflow: hidden; background: var(--l-gradient); color: #fff; font-family: var(--l-font); line-height: 1.3; -webkit-font-smoothing: antialiased; }
+  .l-auth-aside::before { content: ""; position: absolute; right: -210px; top: 60px; width: 620px; height: 280px; background: url(/luft/logo-mark.svg) center / contain no-repeat; opacity: .1; transform: rotate(-56deg); pointer-events: none; }
+  .l-auth-aside > * { position: relative; }
+  .l-auth-aside *, .l-auth-aside *::before { box-sizing: border-box; }
+  .l-auth-hero { flex: 1; display: grid; align-content: center; justify-items: center; gap: 16px; text-align: center; }
+  .l-auth-hero .l-halo { margin-bottom: 8px; }
+  .l-auth-hero h2 { margin: 0; max-width: 420px; font-size: 36px; line-height: 42px; font-weight: 700; letter-spacing: -.02em; text-wrap: balance; }
+  .l-auth-hero p { margin: 0; max-width: 400px; font-size: 16px; line-height: 22px; color: var(--l-blue-50); text-wrap: balance; }
+  .l-auth-aside ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .l-auth-aside li { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 16px; background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .18); font-size: 13px; line-height: 17px; color: var(--l-blue-50); }
+  .l-auth-aside li > span { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(255, 255, 255, .16); color: #fff; }
+  .l-auth-aside li strong { display: block; font-size: 15px; line-height: 20px; font-weight: 500; color: #fff; }
+
+  .l-auth .l-app { background: transparent; }
+  .l-auth .l-screen { max-width: 560px; padding: 48px 32px 0; background: transparent; box-shadow: none; overflow-x: visible; }
+  /* El encabezado azul cede el protagonismo al panel de marca: pasa a ser un título de página */
+  .l-auth .l-header { margin-bottom: 0; padding: 0 16px 24px; border-radius: 0; background: none; color: var(--l-n-900); text-align: left; overflow: visible; }
+  .l-auth .l-header::before { display: none; }
+  .l-auth .l-header h1 { font-size: 32px; line-height: 40px; }
+  .l-auth .l-header p { margin-top: 8px; font-size: 16px; line-height: 22px; color: var(--l-n-600); }
+  .l-auth .l-header-top { margin-bottom: 28px; }
+  .l-auth .l-header .l-round { background: var(--l-blue-50); color: var(--l-blue-500); }
+  .l-auth .l-header .l-track { background: var(--l-n-200); }
+  .l-auth .l-header .l-track i { background: var(--l-blue-500); }
+  .l-auth .l-header .l-step, .l-auth .l-header .l-top-title { color: var(--l-n-600); }
+  .l-auth .l-plain-top { padding: 0 16px; }
+  .l-auth .l-onboard img.art { width: min(340px, 78%); }
+  .l-auth .l-onboard h1 { font-size: 28px; line-height: 36px; }
+  .l-auth .l-footer { padding-bottom: 32px; }
+}
+
+/* ───────── Tableros a varias columnas (pantallas con pestaña) ───────── */
+@media (min-width: 1200px) {
+  .l-shell .l-screen:is(.d-home, .d-progress, .d-learn, .d-profile) { max-width: 1184px; }
+  .l-shell .l-screen:is(.d-home, .d-progress, .d-learn, .d-profile) .l-header { margin-bottom: 24px; padding-bottom: 28px; }
+  .l-shell .l-screen:is(.d-home, .d-progress, .d-learn, .d-profile) .l-body { display: grid; gap: 24px !important; padding-left: 0; padding-right: 0; align-items: start; align-content: start; }
+
+  /* Inicio: crédito y accesos a la izquierda, progreso a la derecha, tips a lo ancho */
+  .l-shell .d-home .l-body { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .l-shell .d-home .l-body > :nth-child(1) { grid-column: 1 / span 7; grid-row: 1; }
+  .l-shell .d-home .l-body > :nth-child(2) { grid-column: 1 / span 7; grid-row: 2; }
+  .l-shell .d-home .l-body > :nth-child(3) { grid-column: 8 / span 5; grid-row: 1 / span 2; }
+  .l-shell .d-home .l-body > :nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
+  .l-shell .d-home .l-big-number { font-size: 44px; line-height: 52px; }
+  .l-shell .d-home .l-ladder { height: 132px; }
+  .l-shell .d-home .l-carousel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 0; padding: 0; overflow: visible; }
+  .l-shell .d-home .l-tipcard { width: auto; }
+  .l-shell .d-home .l-section-title .l-small { display: none; }
+
+  /* Progreso: resumen a lo ancho, nivel y misiones en paralelo, logros a lo ancho */
+  .l-shell .d-progress .l-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .l-shell .d-progress .l-body > :nth-child(1), .l-shell .d-progress .l-body > :nth-child(4) { grid-column: 1 / -1; }
+  .l-shell .d-progress .l-stats > div { padding: 8px; }
+  .l-shell .d-progress .l-stats strong { font-size: 24px; }
+  .l-shell .d-progress .l-ladder { height: 132px; }
+
+  /* Aprender: racha y lección en curso en paralelo, módulos en dos columnas */
+  .l-shell .l-screen.d-learn .l-body { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .l-shell .d-learn .l-body > :is(.l-section-title, .l-empty) { grid-column: 1 / -1; align-self: end; }
+  .l-shell .d-learn .l-body > .l-card { align-content: center; }
+  .l-shell .d-learn .l-body > .l-card:first-child:nth-last-child(n + 2):has(+ .l-section-title) { grid-column: 1 / -1; }
+
+  /* Perfil: resumen a lo ancho, trámites y cuenta en paralelo */
+  .l-shell .d-profile .l-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .l-shell .d-profile .l-body > :nth-child(1) { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 32px; }
+  .l-shell .d-profile .l-body > :nth-child(1) > :not(.l-btn) { grid-column: 1; }
+  .l-shell .d-profile .l-body > :nth-child(1) > .l-btn { grid-column: 2; grid-row: 1 / span 3; width: auto; min-width: 260px; }
+  .l-shell .d-profile .l-body > :nth-child(2) { grid-area: 2 / 1; }
+  .l-shell .d-profile .l-body > :nth-child(3) { grid-area: 3 / 1; }
+  .l-shell .d-profile .l-body > :nth-child(4) { grid-area: 2 / 2; }
+  .l-shell .d-profile .l-body > :nth-child(5) { grid-area: 3 / 2; }
+}
+
+/* Con ancho de sobra, los accesos rápidos de Inicio pasan a fichas horizontales */
+@media (min-width: 1400px) {
+  .l-shell .d-home .l-shortcuts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  .l-shell .d-home .l-shortcuts a { grid-auto-flow: column; justify-content: start; align-items: center; justify-items: start; gap: 12px; padding: 12px; border-radius: 20px; background: #fff; box-shadow: var(--l-shadow-card); font-size: 14px; text-align: left; white-space: nowrap; }
+  .l-shell .d-home .l-shortcuts span { width: 44px; height: 44px; border-radius: 14px; background: var(--l-blue-50); box-shadow: none; }
+}
+
+/* Ventanas bajas: el panel de marca prescinde de la lista para no recortarse */
+@media (min-width: 1024px) and (max-height: 820px) {
+  .l-auth-aside ul { display: none; }
+}
+
+/* ───────── Puntero: estados al pasar el cursor ───────── */
+@media (min-width: 1024px) and (hover: hover) {
+  .l-sidenav nav a:not([aria-current="page"]):hover, .l-sidenav .l-d-me:hover, .l-sidenav .l-d-user button:hover { background: rgba(255, 255, 255, .14); }
+  .l-shell .l-list > :is(a, button):hover { background: var(--l-n-50); }
+  .l-shell .l-module:not(.locked):not(.current):hover, :is(.l-shell, .l-auth) .l-option:not([aria-checked="true"]):not(:disabled):hover { border-color: var(--l-blue-200); }
+  .l-shell .d-home .l-shortcuts a:hover span { box-shadow: var(--l-shadow-card), 0 0 0 2px var(--l-blue-200); }
+  :is(.l-shell, .l-auth) .l-btn.secondary:not(:disabled):hover { border-color: var(--l-blue-200); }
+  :is(.l-shell, .l-auth) .l-round:hover { filter: brightness(1.08); }
+  :is(.l-shell, .l-auth) .l-link:hover, :is(.l-shell, .l-auth) .l-link-button:hover, .l-shell .l-section-title a:hover { text-decoration: underline; }
+}
