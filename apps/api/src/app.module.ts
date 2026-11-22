@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AdminModule } from './admin/admin.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
 import { validateEnvironment } from './config/environment';
@@ -10,6 +11,7 @@ import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { LuftModule } from './luft/luft.module';
+import { MatchingModule } from './matching/matching.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { StartifModule } from './startif/startif.module';
 
@@ -29,6 +31,8 @@ import { StartifModule } from './startif/startif.module';
     LuftModule,
     StartifModule,
     AdminModule,
+    MatchingModule,
+    AnalyticsModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

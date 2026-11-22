@@ -179,44 +179,23 @@ export class AnalyticsService {
   }
 
   /**
-   * EXTENSION POINT — capital prepayments ("abonos anticipados").
-   *
-   * STARTIF records them in `startif."LoanPrepayment"`, a table that may not
-   * exist in every deployment. It is read with raw SQL only when the table
-   * has `loanId` and `amountCOP`; rows count once applied when an `appliedAt`
-   * column exists. Anything else leaves the metric at zero instead of
-   * failing the report.
+   * Capital prepayments ("abonos anticipados") recorded by STARTIF. Only the
+   * capital actually applied counts, and reversed (refunded) prepayments are
+   * left out.
    */
   private async capitalPrepayments() {
     const result = new Map<string, { count: number; amountCOP: number }>();
-    try {
-      const columns = await this.db.startif.$queryRaw<
-        Array<{ column_name: string }>
-      >`SELECT column_name FROM information_schema.columns
-        WHERE table_schema = 'startif' AND table_name = 'LoanPrepayment'`;
-      const names = new Set(columns.map((item) => item.column_name));
-      if (!names.has('loanId') || !names.has('amountCOP')) return result;
-      type Row = { loanId: string; count: number; total: string };
-      const rows = names.has('appliedAt')
-        ? await this.db.startif.$queryRaw<Row[]>`
-            SELECT "loanId"::text AS "loanId", COUNT(*)::int AS "count",
-                   COALESCE(SUM("amountCOP"), 0)::text AS "total"
-            FROM "startif"."LoanPrepayment"
-            WHERE "appliedAt" IS NOT NULL GROUP BY "loanId"`
-        : await this.db.startif.$queryRaw<Row[]>`
-            SELECT "loanId"::text AS "loanId", COUNT(*)::int AS "count",
-                   COALESCE(SUM("amountCOP"), 0)::text AS "total"
-            FROM "startif"."LoanPrepayment" GROUP BY "loanId"`;
-      for (const row of rows)
-        result.set(row.loanId, {
-          count: Number(row.count),
-          amountCOP: Number(row.total),
-        });
-    } catch (error) {
-      this.logger.warn(
-        `No se pudieron leer los abonos anticipados: ${(error as Error).message}`,
-      );
-    }
+    const rows = await this.db.startif.loanPrepayment.groupBy({
+      by: ['loanId'],
+      where: { reversedAt: null },
+      _count: { _all: true },
+      _sum: { appliedCOP: true },
+    });
+    for (const row of rows)
+      result.set(row.loanId, {
+        count: row._count._all,
+        amountCOP: Number(row._sum.appliedCOP ?? 0n),
+      });
     return result;
   }
 
