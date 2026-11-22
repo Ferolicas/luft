@@ -33,8 +33,27 @@ Fecha de consolidación: 2026-09-01. Alcance aprobado por el propietario al indi
 - Dominio público: `luft.restaurar.co`.
 - Repositorio canónico público: `Ferolicas/luft`, rama `main`, con verificación y despliegue continuos.
 
+## LUFT + STARTIF V2 (2026-11-22)
+
+Instrucciones del propietario del 20 de noviembre de 2026 y entrega "LUFT_STARTIF_V2_FINAL_DESARROLLO".
+
+- Amortización: gradiente geométrico decreciente. Crédito constructor 1 ("Servicio LUFT") fijo en $600.000, 6 cuotas mensuales, 1 % mensual vencido y reducción del 20 % mensual (cuotas 167.320 · 133.856 · 107.085 · 85.668 · 68.534 · 54.827). La persona no elige monto ni plazo; las condiciones viven en un producto versionado y se cambian desde administración.
+- Las solicitudes del flujo anterior que no habían firmado pagaré pasaron a esas condiciones (lo cotizado antes queda guardado).
+- Dos créditos constructores: el segundo ("Consolidación") solo se origina con comportamiento del primero, finalidad válida, capacidad disponible y sin sobreendeudamiento, y lo decide Riesgo. Nunca se aprueba para subir el puntaje.
+- Categoría (Joven · LUFT Impulso, Adulto · LUFT Avanza, Familia · LUFT Juntos) y arquetipo son niveles distintos; el arquetipo es dinámico, versionado y explicado. Ambos se administran sin desplegar código.
+- Planes Individual, Dúo y Familia sobre un precio base de $600.000 por identidad. El paquete familiar no fusiona expedientes: cada integrante acepta sus propios términos y decide qué comparte.
+- La XP se gana solo con cursos; pagos y perfil dan insignias.
+- La formalización tributaria es una orientación con reglas versionadas por año y revisión profesional; la presentación ante la DIAN se registra, no se automatiza.
+- Matching explicable y reproducible con políticas de entidades versionadas; la persona autoriza expresamente cada presentación. Ningún texto promete aprobación ni aumento de puntaje.
+- Roles nuevos: entidad financiera y aliado, cada uno con su portal y solo con vínculo.
+- `/app/renta` lleva al asistente de formalización, que cubre la preparación guiada.
+
 ## Decisiones pendientes del propietario
 
 - Identidad legal exacta de LUFT/StartIF, NIT, domicilio y correos oficiales de privacidad/PQR.
 - Confirmación de si el servicio se limitará jurídicamente a Colombia.
 - Credenciales, contratos, endpoints privados y ambientes otorgados por cada proveedor.
+- Crédito 2: monto o rango, plazo, tasa y tope de endeudamiento (está en borrador hasta definirlos).
+- Descuento de los planes Dúo y Familia (sembrado en 0 %).
+- Días de mora para pasar un préstamo a incumplimiento (30 por defecto) y vigencia de evidencias (180 días buró, 90 documentos).
+- Pantalla del paso 2 del flujo de crédito ("Tu plan LUFT") y pantallas nuevas de "DEV READY": pendientes de contrastar con Figma.
