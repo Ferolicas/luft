@@ -4,7 +4,7 @@ import { useState } from "react";
 import { BarList, ColumnChart } from "@/components/admin/charts";
 import { Button, DataTable, Empty, Loaded, PageHead, Panel, Stat, Toolbar, useLoad } from "@/components/admin/ui";
 import type { Effectiveness, ScoreCohort } from "@/lib/admin/analytics-types";
-import { dateTime, day, decimal, integer, month, percent } from "@/lib/admin/format";
+import { dateTime, day, decimal, integer, month, percent, titleCase } from "@/lib/admin/format";
 import { get, query } from "@/lib/admin/http";
 
 const cohortLabel = (value: string) => (value === "SIN_CREDITO" ? "Sin crédito" : value === "TODOS" ? "Todos" : month(value));
@@ -42,18 +42,18 @@ export default function EffectivenessPage() {
                 <Stat label="Personas analizadas" value={integer(data.users)} hint={`${integer(overall.withBoth)} con puntaje inicial y final`} />
                 <Stat label="Puntaje inicial promedio" value={overall.averageInitial === null ? "—" : decimal(overall.averageInitial, 0)} hint={`${integer(overall.withInitial)} personas con consulta inicial`} />
                 <Stat label="Puntaje final promedio" value={overall.averageFinal === null ? "—" : decimal(overall.averageFinal, 0)} hint={`${integer(overall.withFinal)} personas con consulta final`} />
-                <Stat label="Cambio promedio" value={signed(overall.averageDelta)} hint={`Mediana ${signed(overall.medianDelta)} puntos`} />
-                <Stat label="Estabilidad del arquetipo" value={rate(stability.stabilityRate)} hint={`${integer(stability.stable)} sin cambios de ${integer(stability.usersWithHistory)}`} />
+                <Stat label="Cambio promedio" value={signed(overall.averageDelta)} hint={overall.medianDelta === null ? "Sin puntajes comparables" : `Mediana ${signed(overall.medianDelta)} puntos`} />
+                <Stat label="Estabilidad del arquetipo" value={rate(stability.stabilityRate)} hint={stability.usersWithHistory === 0 ? "Sin historia de arquetipos" : `${integer(stability.stable)} sin cambios de ${integer(stability.usersWithHistory)}`} />
               </div>
               <Panel title="Puntaje inicial frente a puntaje final" description="Promedio por cosecha (mes de originación del crédito). Solo cuentan las consultas completadas a las centrales.">
                 {withBoth.length === 0 ? <Empty title="Aún no hay puntajes para comparar">Se necesitan personas con una consulta inicial y una final completadas. Sin proveedor de centrales configurado no hay consultas.</Empty> : (
-                  <div className="cs-grid cs-grid-chart">
-                    <ColumnChart
+                  <div className="cs-stack">
+                    <div style={{ maxWidth: 820 }}><ColumnChart
                       label="Puntaje promedio inicial y final por cosecha"
                       seriesNames={["Puntaje inicial", "Puntaje final"]}
                       formatY={(value) => decimal(value, 0)}
                       groups={withBoth.map((cohort) => ({ label: cohortLabel(cohort.cohortMonth), values: [cohort.averageInitial, cohort.averageFinal] }))}
-                    />
+                    /></div>
                     <ScoreTable cohorts={[...data.score.cohorts, overall]} />
                   </div>
                 )}
@@ -67,7 +67,7 @@ export default function EffectivenessPage() {
                         <table className="cs-table cs-table-compact">
                           <caption>Lecciones y comportamiento</caption>
                           <thead><tr><th scope="col">Lecciones</th><th scope="col" className="is-right">Personas</th><th scope="col" className="is-right">Créditos</th><th scope="col" className="is-right">Cuotas a tiempo</th><th scope="col" className="is-right">Mora 30+</th></tr></thead>
-                          <tbody>{data.lessons.buckets.map((bucket) => <tr key={bucket.key}><td>{bucket.label}</td><td className="is-right">{integer(bucket.users)}</td><td className="is-right">{integer(bucket.loans)}</td><td className="is-right">{rate(bucket.onTimeRate)} <span className="cs-muted">({bucket.installmentsOnTime}/{bucket.installmentsDue})</span></td><td className="is-right">{rate(bucket.ever30Rate)} <span className="cs-muted">({bucket.ever30})</span></td></tr>)}</tbody>
+                          <tbody>{data.lessons.buckets.map((bucket) => <tr key={bucket.key}><td className="cs-nowrap">{bucket.label}</td><td className="is-right">{integer(bucket.users)}</td><td className="is-right">{integer(bucket.loans)}</td><td className="is-right">{rate(bucket.onTimeRate)} <span className="cs-muted">({bucket.installmentsOnTime}/{bucket.installmentsDue})</span></td><td className="is-right">{rate(bucket.ever30Rate)} <span className="cs-muted">({bucket.ever30})</span></td></tr>)}</tbody>
                         </table>
                       </div>
                     </div>
@@ -83,8 +83,8 @@ export default function EffectivenessPage() {
                         rowKey={(row) => `${row.from}→${row.to}`}
                         empty={<p className="cs-muted cs-small">Nadie ha cambiado de arquetipo.</p>}
                         columns={[
-                          { key: "from", header: "De", cell: (row) => row.from },
-                          { key: "to", header: "A", cell: (row) => row.to },
+                          { key: "from", header: "De", cell: (row) => titleCase(row.from) },
+                          { key: "to", header: "A", cell: (row) => titleCase(row.to) },
                           { key: "count", header: "Personas", align: "right", cell: (row) => integer(row.count) },
                         ]}
                       />

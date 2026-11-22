@@ -258,3 +258,50 @@ Provider callback: `POST /webhooks/open-finance` (HMAC `x-openfinance-signature`
 ### Screens expected by the links the API returns
 
 `/app/ruta`, `/app/formalizacion`, `/app/familia`, `/app/finanzas`, `/app/proyectos`, `/app/oportunidades`, `/invitacion/[token]`, plus the existing `/app/puntaje`, `/app/perfil/financiero`, `/app/perfil/financiero/documentos`, `/app/aprender`, `/app/credito`, `/app/pagar`, `/app/historial`, `/app/pqr` and `/app/perfil/cuenta`.
+
+
+## Frente "web-v2-consolas" (LUFT + STARTIF V2, 2026-11-23)
+
+Operation panel and partner portals in `apps/web`. They keep the panel language of `globals.css` (not the mobile PWA system of `luft.css`): every console class is prefixed `cs-` and lives in the last block of `apps/web/src/app/globals.css`. No new npm dependencies.
+
+### Shell, session and roles
+
+- `apps/web/src/components/app-shell.tsx` exports `ConsoleShell({ area: "admin" | "entidad" | "aliado" })`, `AppShell` (admin alias), `useConsole()` (`{ user, notify }`) and `useSessionUser()`. It resolves the session with `GET /api/auth/me` and renders nothing but a loader until the role is known: 401 → `/login`; a role that does not belong to the console → `homeFor(role)` (`/admin` staff, `/entidad` INSTITUTION, `/aliado` ALLY, `/app` USER).
+- `apps/web/src/lib/admin/nav.ts` is the single map of areas, routes and roles (`ADMIN_NAV`, `canOpen`, `CAN`). The roles are the ones the API controllers enforce; a route missing from the map is denied. A staff role that opens a section it cannot use sees "Esta sección no está disponible para tu rol" and no request is sent.
+- ALLY and INSTITUTION are never offered in the role selector: they are assigned by linking the account to an ally or an institution.
+
+### Routes
+
+| Route | Roles (same as the API) | Purpose |
+| --- | --- | --- |
+| `/admin` | all staff | Overview (`defaultedLoans`, `writtenOffLoans`, `pendingDisbursements`, integrations) |
+| `/admin/personas` | SUPPORT, RISK, SUPERADMIN (role change: SUPERADMIN) | Accounts and internal roles |
+| `/admin/pqr` | SUPPORT, LEGAL, COLLECTIONS, SUPERADMIN | PQR management |
+| `/admin/auditoria` | LEGAL, RISK, SUPERADMIN | Audit log |
+| `/admin/credito/solicitudes` | COMMERCIAL, RISK, FINANCE, LEGAL, SUPERADMIN (decision and eligibility: RISK, SUPERADMIN) | Applications: product, purpose, explained eligibility, instalment plan, signed promissory note, decision `{ decision, reason }` |
+| `/admin/credito/productos` | RISK, FINANCE, SUPERADMIN | Credit product versions: create (inherits), activate, suspend |
+| `/admin/credito/desembolsos` | RISK, FINANCE, SUPERADMIN (register/cancel: FINANCE, SUPERADMIN) | Disbursement queue |
+| `/admin/credito/cartera` | RISK, FINANCE, COLLECTIONS, SUPERADMIN (write-off: FINANCE, SUPERADMIN) | Loans, arrears, write-off |
+| `/admin/credito/tasa-legal` | LEGAL, RISK, SUPERADMIN | Usury rate |
+| `/admin/catalogo/{categorias,arquetipos,planes}` | all staff read; write COMMERCIAL, RISK, SUPERADMIN (plans: COMMERCIAL, FINANCE, SUPERADMIN) | Categories (form-based config), archetypes (visual rule builder, versions, history), plans |
+| `/admin/formalizacion/reglas`, `/admin/formalizacion/casos`, `/admin/formalizacion/casos/[id]` | LEGAL, FINANCE, SUPERADMIN | Tax rule versions and professional review queue |
+| `/admin/matching/entidades[/id]`, `/admin/matching/productos[/id]`, `/admin/matching/productos/versiones/[versionId]` | RISK, COMMERCIAL, SUPERADMIN (write: RISK, SUPERADMIN; account links: SUPERADMIN) | Institutions, financial products, policy versions (state machine, rule builder, simulator, clone, history) |
+| `/admin/matching/presentaciones[/id]` | COMMERCIAL, RISK, SUPERADMIN | Presentation queue, present, decide |
+| `/admin/matching/ejecuciones[/id]` | RISK, SUPERADMIN | Match runs and reproducibility check |
+| `/admin/matching/aliados[/id]` | SUPERADMIN | Allies, linked accounts, referrals |
+| `/admin/analitica/{cosechas,efectividad,backtesting[/id]}` | RISK, FINANCE, SUPERADMIN | Vintages (with frozen snapshots), effectiveness, backtesting |
+| `/entidad`, `/entidad/presentaciones/[id]` | INSTITUTION | Institution portal (`/api/institution`); handles `institution_link_required` |
+| `/aliado` | ALLY | Ally portal (`/api/ally`); aggregated funnel with the suppression notice, handles `ally_link_required` |
+
+### Code layout
+
+- `apps/web/src/lib/admin/`: `http.ts` (`problemOf` normalises every API error to code + message + issues, `download`, `query`), `format.ts` (COP, percentages, Bogotá dates), `labels.ts` (Spanish labels and tones of every status code), `nav.ts`, the response types of each domain (`credit-types.ts`, `catalog-types.ts`, `formalization-types.ts`, `matching-types.ts`, `analytics-types.ts`) and `credit-plan.ts` (display copy of the geometric-gradient calculator, covered by `credit-plan.test.ts`).
+- `apps/web/src/components/admin/`: `ui.tsx` (tables, pager, modal, confirmation with mandatory reason, fields, `useLoad`/`useAction`), `charts.tsx` (own SVG charts: lines with crosshair, grouped columns, bars, segmented bar, single-hue heat cells), `archetype-rules.tsx` (archetype rule builder), `policy-rule-form.tsx` and `policy-simulator.tsx` (parametrised from `GET /admin/matching/catalog`), `matching.tsx` (explanation view, decision form, linked accounts), `partner-forms.tsx`, `people.tsx` (in-memory account directory to show names next to `userId`), `plan-table.tsx`, `portal.tsx`.
+- `e2e/consolas-acceso.spec.ts`: access tests that need no API (the session is mocked on `GET /api/auth/me`).
+
+### Flows worth knowing
+
+- Approving an application never sends a rate: the API uses the rate of the signed product. `legal_rate_required`, `rate_exceeds_legal_limit` and `rate_exceeds_signed_note` are shown with their own text (`lib/admin/http.ts`).
+- A credit that pays out money (`TRANSFER`) becomes a loan only when finance registers the real transfer in `/admin/credito/desembolsos`.
+- A policy version is edited only in `BORRADOR`; the buttons shown are exactly `allowedTransitions`; returning to draft and suspending require a note; approval by the same person fails with `independent_approval_required` while another RISK/SUPERADMIN account exists.
+- Irreversible actions (decision, write-off, activation, disbursement, institution decision) go through a confirmation dialog.
