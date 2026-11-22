@@ -34,7 +34,7 @@ export default function CardsPage() {
                 <Card>
                   <div className="v2-card-head"><div><span className="l-overline">Salud de tu cupo</span><div className="v2-big"><strong>{totals.utilizationPercent}%</strong><span>de uso en {plural(data.cards.length, "tarjeta", "tarjetas")}</span></div></div><Chip tone={bandTone(totals.band)}>{BAND_LABEL[totals.band]}</Chip></div>
                   <Meter value={totals.utilizationPercent} band={totals.band} label="Uso total del cupo" />
-                  <Facts columns={3} items={[
+                  <Facts columns={3} rows items={[
                     { label: "Cupo total", value: cop(totals.creditLimitCOP) },
                     { label: "Usado", value: cop(totals.usedBalanceCOP) },
                     { label: "Disponible", value: cop(totals.availableCOP) },
@@ -55,12 +55,13 @@ export default function CardsPage() {
                     <Chip tone={bandTone(card.summary.band)}>{card.summary.utilizationPercent}%</Chip>
                   </div>
                   <Meter value={card.summary.utilizationPercent} band={card.summary.band} label={`Uso del cupo de ${cardName(card)}`} />
-                  <div className="l-row between"><span className="l-muted">Usado {cop(card.usedBalanceCOP)} de {cop(card.creditLimitCOP)}</span><strong style={{ fontSize: 14, fontWeight: 500 }}>Disponible {cop(card.summary.availableCOP)}</strong></div>
                   <div className="v2-dates">
                     <div><Icon name="calendar_today" /><span><strong>Corte: {fmtShort(card.summary.statement.date)}</strong>{inDays(card.summary.statement.days)}</span></div>
                     <div><Icon name="schedule" /><span><strong>Pago: {fmtShort(card.summary.payment.date)}</strong>{inDays(card.summary.payment.days)}</span></div>
                   </div>
                   <div className="l-kv">
+                    <div>Usado<strong>{cop(card.usedBalanceCOP)} de {cop(card.creditLimitCOP)}</strong></div>
+                    <div>Disponible<strong>{cop(card.summary.availableCOP)}</strong></div>
                     <div>Compras a plazos vigentes<strong>{card.summary.deferredPurchases}{card.summary.longestTermMonths ? ` · la más larga a ${card.summary.longestTermMonths} meses` : ""}</strong></div>
                     <div>Cuotas de compras al mes<strong>{cop(card.summary.monthlyInstallmentsCOP)}</strong></div>
                     {card.summary.cashAdvances > 0 && <div>Avances en efectivo<strong>{card.summary.cashAdvances}</strong></div>}

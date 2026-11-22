@@ -58,9 +58,9 @@ export function ConfirmSheet({ title, children, confirm, danger = false, busy = 
   );
 }
 
-/** Par etiqueta–valor compacto para fichas de datos. */
-export function Facts({ items, columns = 2 }: { items: Array<{ label: string; value: React.ReactNode; hint?: React.ReactNode }>; columns?: 2 | 3 }) {
-  return <dl className={`v2-facts c${columns}`}>{items.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd>{item.hint && <small>{item.hint}</small>}</div>)}</dl>;
+/** Par etiqueta–valor compacto para fichas de datos. `rows` apila las fichas en móvil (cifras largas). */
+export function Facts({ items, columns = 2, rows = false }: { items: Array<{ label: string; value: React.ReactNode; hint?: React.ReactNode }>; columns?: 2 | 3; rows?: boolean }) {
+  return <dl className={`v2-facts c${columns} ${rows ? "rows" : ""}`}>{items.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd>{item.hint && <small>{item.hint}</small>}</div>)}</dl>;
 }
 
 /** Fila de una lista con ícono, texto y remate; enlace si recibe `href`. */

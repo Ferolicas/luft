@@ -46,7 +46,7 @@ export function PresentationBlock({ item, busy, onRevoke }: { item: Presentation
         <li><strong>Autorizaste la presentación</strong><small>{fmtDateTime(item.authorizedAt)}</small></li>
       </ol>
       {item.status === "APROBADA" && (
-        <Facts columns={3} items={[
+        <Facts columns={3} rows items={[
           { label: "Monto aprobado", value: item.approvedAmountCOP != null ? cop(item.approvedAmountCOP) : "—" },
           { label: "Tasa E.A.", value: percentText(item.approvedRateEA) || "—" },
           { label: "Plazo", value: item.approvedTermMonths != null ? `${item.approvedTermMonths} meses` : "—" },

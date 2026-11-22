@@ -194,7 +194,7 @@ export default function FormalizationPage() {
                   <li key={event.id}>
                     <strong>{EVENT[event.action] ?? event.toLabel}</strong>
                     <small>{fmtDateTime(event.at)} · {ACTOR[event.actor]}{event.from !== event.to ? ` · ${event.toLabel}` : ""}</small>
-                    {event.note && <div className="note"><b>{event.actor === "STAFF" ? "Observación del profesional" : "Nota"}</b>{event.note}</div>}
+                    {event.note && <div className="note"><b>{event.action === "OBSERVED" ? "Observación del profesional" : event.actor === "STAFF" ? "Nota del profesional" : "Nota"}</b>{event.note}</div>}
                   </li>
                 ))}</ol>
               )}
@@ -228,8 +228,7 @@ function StatusBlock({ view }: { view: FormalizationView }) {
   if (status === "NO_REQUIERE") return <><h2 className="v2-title">No parece que debas declarar renta</h2><p className="v2-lead">Con lo que declaraste no superas los topes del año gravable {taxYear}. Este paso de tu ruta queda al día; si tus datos cambian, actualiza el diagnóstico.</p></>;
   if (status === "POSIBLE_OBLIGACION") return <>
     <h2 className="v2-title">Es posible que debas declarar renta</h2>
-    <p className="v2-lead">Tus datos superan al menos un tope del año gravable {taxYear}. Revisemos tu caso paso a paso.</p>
-    {diagnosis.reasons.length > 0 && <ul className="l-checks">{diagnosis.reasons.map((reason) => <li key={reason}><Icon name="warning" />{reason}</li>)}</ul>}
+    <p className="v2-lead">Tus datos superan {diagnosis.criteria.filter((criterion) => criterion.exceeds).length === 1 ? "un tope" : `${diagnosis.criteria.filter((criterion) => criterion.exceeds).length} topes`} del año gravable {taxYear}. Mira el detalle en el diagnóstico y revisemos tu caso paso a paso.</p>
   </>;
   if (status === "DOCUMENTO_CARGADO") return <><h2 className="v2-title">Tu declaración está cargada</h2><p className="v2-lead">Agrega los soportes que tengas y envíala a revisión profesional cuando esté completa.</p></>;
   if (status === "PREPARACION_GUIADA") return <><h2 className="v2-title">Estás preparando tu declaración</h2><p className="v2-lead">Marca lo que aplica a tu año, sube tus soportes y envía tu caso a un profesional para que lo revise.</p></>;

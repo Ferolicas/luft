@@ -49,7 +49,8 @@ export default function InvitationPage() {
     api("/auth/me").then(() => setSession("yes")).catch(() => setSession("no"));
   }, []);
   const status = preview.data?.status;
-  useEffect(() => { if (status && status !== "PENDING" && pendingInvitation() === token) forgetInvitation(); }, [status, token]);
+  const gone = preview.status === 404 || (status !== undefined && status !== "PENDING");
+  useEffect(() => { if (gone && pendingInvitation() === token) forgetInvitation(); }, [gone, token]);
 
   if (preview.status === 404) return (
     <Frame title="No encontramos esta invitación" subtitle="Revisa que el enlace esté completo o pide uno nuevo a quien te invitó." footer={<><Button href="/login">Entrar a mi cuenta</Button><Button variant="secondary" href="/">Ir al inicio de LUFT</Button></>}>
@@ -130,7 +131,7 @@ export default function InvitationPage() {
       forgetInvitation(); setJoined(true);
     } catch (cause) {
       const code = errorCode(cause);
-      if (code === "already_in_household") { setBlocked(describeError(cause)); return; }
+      if (code === "already_in_household") { forgetInvitation(); setBlocked(describeError(cause)); return; }
       if (code === "invitation_used" || code === "invitation_expired") { await preview.reload(); return; }
       throw cause;
     }
@@ -156,7 +157,7 @@ export default function InvitationPage() {
           <Checkbox checked={accepted} onChange={setAccepted}>Leí y acepto esta autorización (versión {invitation.consent.version}).</Checkbox>
           {accept.failure && <Alert>{accept.failure}</Alert>}
           <Button disabled={!accepted || accept.busy} onClick={confirm}>{accept.busy ? "Uniéndote…" : "Aceptar e ingresar al hogar"}</Button>
-          <Link href="/app" className="l-link-button">Ahora no</Link>
+          <Link href="/app" className="l-link-button" onClick={forgetInvitation}>Ahora no</Link>
         </Card>
       </>}
     </Frame>

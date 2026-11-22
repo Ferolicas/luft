@@ -53,7 +53,7 @@
 .v2-facts.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .v2-facts > div { padding: 12px; border-radius: 16px; background: var(--l-n-50); border: var(--l-stroke, 1.5px) solid var(--l-n-200); min-width: 0; }
 .v2-facts dt { font-size: 12px; line-height: 16px; color: var(--l-n-600); }
-.v2-facts dd { margin: 2px 0 0; font-size: 16px; line-height: 21px; font-weight: 500; color: var(--l-n-900); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.v2-facts dd { margin: 2px 0 0; font-size: 16px; line-height: 21px; font-weight: 500; color: var(--l-n-900); font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
 .v2-facts small { display: block; margin-top: 2px; font-size: 11px; line-height: 15px; color: var(--l-n-500); }
 
 /* Plegables */
@@ -341,6 +341,13 @@
   .l-shell .v2-plan:not([aria-checked="true"]):hover, .l-shell .v2-kinds button:not([aria-checked="true"]):hover { border-color: var(--l-blue-200); }
   .l-shell .v2-items li > a:hover strong, .l-shell .v2-rules a:hover { text-decoration: underline; }
   .l-shell .v2-fold > summary:hover, .l-shell .v2-stage > summary:hover strong { text-decoration: underline; }
+}
+
+@media (max-width: 599px) {
+  .v2-facts.rows { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .v2-facts.rows > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; padding: 10px 12px; }
+  .v2-facts.rows dd { margin: 0; text-align: right; }
+  .v2-facts.rows small { flex-basis: 100%; margin: 0; }
 }
 
 @media (max-width: 359px) {
