@@ -133,8 +133,32 @@ export class AdminService {
     return { items, page, pages: Math.ceil(total / take), total };
   }
 
+  /**
+   * Names for the ids that operational listings return. Every staff role
+   * needs to know whom a credit, payment or request belongs to, but only for
+   * the ids it is already looking at: this is a lookup, not a directory.
+   */
+  async lookupPeople(body: unknown) {
+    const { ids } = z
+      .object({ ids: z.array(z.string().uuid()).min(1).max(200) })
+      .parse(body);
+    const items = await this.db.identity.user.findMany({
+      where: { id: { in: [...new Set(ids)] } },
+      select: { id: true, fullName: true, email: true },
+    });
+    return { items };
+  }
+
   async setRole(actor: AuthenticatedUser, userId: string, body: unknown) {
     const { role } = z.object({ role: z.nativeEnum(Role) }).parse(body);
+    // Entity and ally accounts only exist linked to their institution or
+    // ally; that link (and its role) is managed from the matching console.
+    if (role === Role.ALLY || role === Role.INSTITUTION)
+      throw new BadRequestException({
+        code: 'partner_role_requires_link',
+        message:
+          'Este rol se asigna al vincular la cuenta con una entidad o un aliado.',
+      });
     if (actor.id === userId && role !== Role.SUPERADMIN)
       throw new BadRequestException(
         'No puedes retirar tu propio acceso de superadministración.',
@@ -329,6 +353,8 @@ export class AdminService {
     if (annualEffective > Number(usury.annualEffectiveRate))
       throw new BadRequestException({
         code: 'rate_exceeds_legal_limit',
+        message:
+          'La tasa supera el máximo legal vigente. Revisa la tasa del producto o la tasa legal registrada.',
         requestedAnnualEffective: annualEffective,
         legalAnnualEffective: Number(usury.annualEffectiveRate),
       });

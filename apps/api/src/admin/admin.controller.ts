@@ -41,6 +41,9 @@ export class AdminController {
   ) {
     return this.admin.users(Number(page ?? 1), search);
   }
+  @Post('directory/lookup') lookupPeople(@Body() body: unknown) {
+    return this.admin.lookupPeople(body);
+  }
   @Patch('users/:id/role') @Roles(Role.SUPERADMIN) setRole(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id') id: string,

@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/app/", "/admin/", "/api/", "/verificar/"],
+      disallow: ["/app/", "/admin/", "/entidad/", "/aliado/", "/invitacion/", "/api/", "/verificar/"],
     },
     sitemap: "https://luft.restaurar.co/sitemap.xml",
     host: "https://luft.restaurar.co",

@@ -44,7 +44,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="es" className={dmSans.variable}>
       <body>
         {children}
-        <script defer src="https://restaurar.co/m.js" data-site="luft" data-exclude="/app,/admin,/login,/verificar,/recuperar,/api" />
+        <script defer src="https://restaurar.co/m.js" data-site="luft" data-exclude="/app,/admin,/entidad,/aliado,/invitacion,/login,/verificar,/recuperar,/api" />
       </body>
     </html>
   );

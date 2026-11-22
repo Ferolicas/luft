@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useConsole } from "@/components/app-shell";
-import { get, type Paged } from "@/lib/admin/http";
+import { useEffect, useSyncExternalStore } from "react";
+import { send } from "@/lib/admin/http";
 import { shortId } from "@/lib/admin/format";
 
 export interface AdminUser {
@@ -19,50 +18,62 @@ export interface AdminUser {
   createdAt: string;
 }
 
-/** Roles que la API deja consultar `GET /admin/users`. */
-const DIRECTORY_ROLES = ["SUPPORT", "RISK", "SUPERADMIN"];
-/** Tope de páginas del directorio en memoria (25 cuentas por página). */
-const MAX_PAGES = 12;
+interface PersonName { fullName: string; email: string }
 
-let cache: Promise<Map<string, AdminUser>> | null = null;
-
-async function loadDirectory() {
-  const people = new Map<string, AdminUser>();
-  for (let page = 1; page <= MAX_PAGES; page += 1) {
-    const result = await get<Paged<AdminUser>>(`/admin/users?page=${page}`);
-    for (const user of result.items) people.set(user.id, user);
-    if (page >= result.pages) break;
-  }
-  return people;
-}
-
-/**
- * Directorio de cuentas para mostrar nombres junto a los `userId` que devuelven
- * los listados de crédito, PQR y auditoría (esos listados solo traen el id).
- * Solo se carga para los roles que pueden leer cuentas; el resto ve el id corto.
+/*
+ * Nombres junto a los `userId` que devuelven los listados de crédito, PQR,
+ * auditoría y matching. Cada celda pide su id; las peticiones de un mismo
+ * render se agrupan en una sola consulta (`POST /admin/directory/lookup`) y el
+ * resultado queda en memoria. Cualquier rol del equipo puede resolver los
+ * nombres de los casos que ya está viendo; no se descarga un directorio.
  */
+const names = new Map<string, PersonName | null>();
+const waiting = new Set<string>();
+const listeners = new Set<() => void>();
+let timer: number | undefined;
+let version = 0;
+
+async function flush() {
+  timer = undefined;
+  const ids = [...waiting].slice(0, 200);
+  for (const id of ids) waiting.delete(id);
+  try {
+    const result = await send<{ items: Array<PersonName & { id: string }> }>("POST", "/admin/directory/lookup", { ids });
+    for (const id of ids) names.set(id, null);
+    for (const item of result.items) names.set(item.id, { fullName: item.fullName, email: item.email });
+  } catch {
+    for (const id of ids) names.set(id, null);
+  }
+  version += 1;
+  for (const listener of listeners) listener();
+  if (waiting.size > 0) timer = window.setTimeout(() => void flush(), 20);
+}
+
+function request(id: string) {
+  if (names.has(id) || waiting.has(id)) return;
+  waiting.add(id);
+  timer ??= window.setTimeout(() => void flush(), 20);
+}
+
+const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+
+/** Se conserva por compatibilidad con las pantallas: las celdas resuelven su propio nombre. */
 export function usePeople() {
-  const { user } = useConsole();
-  const [people, setPeople] = useState<Map<string, AdminUser> | null>(null);
-  const enabled = DIRECTORY_ROLES.includes(user.role);
-  useEffect(() => {
-    if (!enabled) return;
-    let alive = true;
-    cache ??= loadDirectory().catch((cause) => { cache = null; throw cause; });
-    cache.then((result) => { if (alive) setPeople(result); }).catch(() => undefined);
-    return () => { alive = false; };
-  }, [enabled]);
-  return people;
+  return null as Map<string, AdminUser> | null;
 }
 
-/** Olvida el directorio en memoria (tras cambiar un rol o vincular una cuenta). */
+/** Olvida los nombres en memoria (tras cambiar un rol o vincular una cuenta). */
 export function forgetPeople() {
-  cache = null;
+  names.clear();
+  version += 1;
+  for (const listener of listeners) listener();
 }
 
-export function PersonCell({ id, people }: { id: string | null | undefined; people: Map<string, AdminUser> | null }) {
+export function PersonCell({ id }: { id: string | null | undefined; people?: Map<string, AdminUser> | null }) {
+  useSyncExternalStore(subscribe, () => version, () => 0);
+  useEffect(() => { if (id) request(id); }, [id]);
   if (!id) return <span className="cs-muted">—</span>;
-  const person = people?.get(id);
+  const person = names.get(id);
   if (!person) return <span className="cs-mono" title={id}>{shortId(id)}</span>;
   return <div className="cs-cell"><strong>{person.fullName}</strong><small>{person.email}</small></div>;
 }

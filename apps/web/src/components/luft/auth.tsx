@@ -6,12 +6,11 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { rememberBureauConsent, syncAfterSignup } from "@/lib/journey";
+import { homeFor } from "@/lib/admin/nav";
 import { pendingInvitation } from "@/lib/v2/api";
 import { Alert, Button, Card, Checkbox, ColombiaFlag, Field, Header, Icon, Luft, Screen, Tip } from "./ui";
 
 interface Session { user?: { role?: string } }
-/** Cada tipo de cuenta entra a su propio espacio. */
-const homeForRole = (role: string) => (role === "INSTITUTION" ? "/entidad" : role === "ALLY" ? "/aliado" : role === "USER" ? "/app" : "/admin");
 
 type Passkey = Parameters<typeof startAuthentication>[0]["optionsJSON"];
 
@@ -24,7 +23,7 @@ export function LoginScreen() {
   const [password, setPassword] = useState("");
   async function run(action: () => Promise<string>) {
     setBusy(true); setError("");
-    try { const role = await action(); const invitation = pendingInvitation(); router.push(invitation && role === "USER" ? `/invitacion/${encodeURIComponent(invitation)}` : homeForRole(role)); router.refresh(); } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+    try { const role = await action(); const invitation = pendingInvitation(); router.push(invitation && role === "USER" ? `/invitacion/${encodeURIComponent(invitation)}` : homeFor(role)); router.refresh(); } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   }
   const submit = (event: FormEvent) => { event.preventDefault(); void run(async () => (await api<Session>("/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) })).user?.role ?? "USER"); };
   const passkey = () => {

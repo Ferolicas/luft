@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { io, type Socket } from "socket.io-client";
+import { homeFor } from "@/lib/admin/nav";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import type { DashboardData } from "@/lib/types";
 import type { SessionUser } from "../app-shell";
@@ -63,7 +64,11 @@ export function LuftShell({ children }: { children: React.ReactNode }) {
   const notify = useCallback((message: string) => { setToast(message); window.setTimeout(() => setToast(""), 4500); }, []);
   useEffect(() => {
     api<{ user: SessionUser }>("/auth/me")
-      .then((result) => { setUser(result.user); return reload(); })
+      .then((result) => {
+        // Las cuentas de entidad y de aliado tienen su propio portal: aquí no hay nada suyo.
+        if (result.user.role === "ALLY" || result.user.role === "INSTITUTION") { router.replace(homeFor(result.user.role)); return; }
+        setUser(result.user); return reload();
+      })
       .catch((cause) => { if (cause instanceof ApiError && cause.status === 401) router.replace("/login"); else setFailure(errorMessage(cause)); });
   }, [router, reload]);
   useEffect(() => { if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js"); }, []);
