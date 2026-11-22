@@ -72,8 +72,8 @@ export function ResultCard({ result, open, busy, onAuthorize, onRevoke }: { resu
       <div className="v2-wrap"><StatusChip tone={tone}>{label}</StatusChip><Chip>Encaje {result.fitPercent}%</Chip>{result.requiresException && <Chip tone="violet">Requiere excepción</Chip>}</div>
       <p className="v2-lead">{result.headline}</p>
       <Facts items={[
-        { label: "Monto", value: range(product.minAmountCOP, product.maxAmountCOP, cop) },
-        { label: "Plazo", value: range(product.minTermMonths, product.maxTermMonths, (value) => `${value} meses`) },
+        { label: "Monto", value: range(product.minAmountCOP, product.maxAmountCOP, cop), hint: product.description ?? undefined },
+        { label: "Plazo", value: product.minTermMonths != null && product.maxTermMonths != null && product.minTermMonths !== product.maxTermMonths ? `${product.minTermMonths} a ${product.maxTermMonths} meses` : range(product.minTermMonths, product.maxTermMonths, (value) => `${value} meses`) },
         ...(product.referenceRateEA != null ? [{ label: "Tasa de referencia", value: `${percentText(product.referenceRateEA)} E.A.`, hint: "Informativa: la define la entidad" }] : []),
         ...(product.channel ? [{ label: "Canal", value: product.channel }] : []),
       ]} />

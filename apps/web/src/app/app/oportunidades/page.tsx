@@ -82,7 +82,7 @@ export default function OpportunitiesPage() {
               {action.failure && !revoking && <Alert>{action.failure}</Alert>}
               {view.results.length === 0
                 ? <Card><Empty title="Aún no hay productos para comparar" lufty>Cuando una entidad aliada publique una política vigente, aparecerá aquí con su explicación.</Empty></Card>
-                : view.results.map((result, index) => <ResultCard key={result.id} result={result} open={index === 0} busy={action.busy} onAuthorize={() => setAuthorizing(result)} onRevoke={() => result.presentation && setRevoking(result.presentation)} />)}
+                : view.results.map((result, index) => <ResultCard key={result.id} result={result} open={index === 0 || result.explanation.gaps.some((rule) => rule.completeHref)} busy={action.busy} onAuthorize={() => setAuthorizing(result)} onRevoke={() => result.presentation && setRevoking(result.presentation)} />)}
             </> : readiness.ready && (
               <Card><Empty title="Todavía no has hecho una búsqueda">Comparamos tu perfil con la política vigente de cada producto y te mostramos el porcentaje de encaje, las reglas que cumples, las brechas y las exclusiones.</Empty></Card>
             )}
