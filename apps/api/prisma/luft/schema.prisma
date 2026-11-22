@@ -12,6 +12,9 @@ enum ConsentKind {
   BUREAU_QUERY
   SCORE_SHARE_WITH_STARTIF
   COMMUNICATIONS
+  HOUSEHOLD_SHARING
+  OPEN_FINANCE
+  TAX_ASSISTANCE
 }
 
 enum InquiryType {
@@ -44,6 +47,9 @@ model Consent {
   deviceMeta   Json?
   acceptedAt   DateTime    @default(now()) @db.Timestamptz(3)
   revokedAt    DateTime?   @db.Timestamptz(3)
+  scope        Json?
+  expiresAt    DateTime?   @db.Timestamptz(3)
+  revokedReason String?    @db.VarChar(200)
 
   @@index([userId, kind, acceptedAt])
 }
@@ -163,4 +169,470 @@ model Opportunity {
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([userId, matchScore])
+}
+
+// ---------------------------------------------------------------------------
+// LUFT + STARTIF V2 (frente "luft-dominio"). Los estados se guardan como texto
+// y la migración los protege con CHECK; los índices únicos parciales también
+// viven solo en el SQL de la migración.
+// ---------------------------------------------------------------------------
+
+model ServiceCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique @db.VarChar(40)
+  brand       String   @db.VarChar(80)
+  label       String   @db.VarChar(80)
+  description String   @db.Text
+  config      Json
+  active      Boolean  @default(true)
+  position    Int      @default(0)
+  updatedBy   String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  archetypes  Archetype[]
+  routes      UserRoute[]
+}
+
+model Archetype {
+  id          String   @id @default(uuid()) @db.Uuid
+  categoryId  String   @db.Uuid
+  code        String   @db.VarChar(40)
+  name        String   @db.VarChar(120)
+  description String   @db.Text
+  rules       Json
+  priority    Int      @default(0)
+  version     Int      @default(1)
+  isDefault   Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdBy   String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  category    ServiceCategory @relation(fields: [categoryId], references: [id])
+  assignments ArchetypeAssignment[]
+
+  @@unique([categoryId, code, version])
+  @@index([categoryId, active, priority])
+}
+
+model UserRoute {
+  id                    String    @id @default(uuid()) @db.Uuid
+  userId                String    @db.Uuid
+  categoryId            String    @db.Uuid
+  status                String    @default("ACTIVE") @db.VarChar(20)
+  stage                 String    @default("REGISTRADO") @db.VarChar(32)
+  origin                String    @default("INITIAL") @db.VarChar(20)
+  title                 String?   @db.VarChar(160)
+  suggestedCategoryCode String?   @db.VarChar(40)
+  categoryChosenByUser  Boolean   @default(false)
+  progressPercent       Int       @default(0)
+  lifeProjectId         String?   @db.Uuid
+  startedAt             DateTime  @default(now()) @db.Timestamptz(3)
+  stageChangedAt        DateTime  @default(now()) @db.Timestamptz(3)
+  closedAt              DateTime? @db.Timestamptz(3)
+  closedReason          String?   @db.VarChar(80)
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+  category              ServiceCategory @relation(fields: [categoryId], references: [id])
+  transitions           RouteTransition[]
+  assignments           ArchetypeAssignment[]
+
+  @@index([userId, status])
+}
+
+model RouteTransition {
+  id        String   @id @default(uuid()) @db.Uuid
+  routeId   String   @db.Uuid
+  userId    String   @db.Uuid
+  fromStage String   @db.VarChar(32)
+  toStage   String   @db.VarChar(32)
+  reason    String   @db.VarChar(80)
+  facts     Json?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  route     UserRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@index([routeId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model ArchetypeAssignment {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  routeId          String?   @db.Uuid
+  categoryCode     String    @db.VarChar(40)
+  archetypeId      String    @db.Uuid
+  archetypeCode    String    @db.VarChar(40)
+  archetypeName    String    @db.VarChar(120)
+  archetypeVersion Int
+  reason           String    @db.VarChar(80)
+  explanation      Json
+  factsCiphertext  String    @db.Text
+  signature        String    @db.Char(64)
+  legacyCode       String?   @db.VarChar(40)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  supersededAt     DateTime? @db.Timestamptz(3)
+  archetype        Archetype @relation(fields: [archetypeId], references: [id])
+  route            UserRoute? @relation(fields: [routeId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([userId, supersededAt])
+}
+
+model SubscriptionPlan {
+  id              String   @id @default(uuid()) @db.Uuid
+  code            String   @unique @db.VarChar(20)
+  name            String   @db.VarChar(80)
+  description     String   @db.Text
+  minSeats        Int
+  maxSeats        Int
+  basePriceCOP    BigInt
+  discountPercent Decimal  @default(0) @db.Decimal(5, 2)
+  active          Boolean  @default(true)
+  position        Int      @default(0)
+  updatedBy       String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model Subscription {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  planCode        String    @db.VarChar(20)
+  seats           Int
+  basePriceCOP    BigInt
+  discountPercent Decimal   @db.Decimal(5, 2)
+  pricePerSeatCOP BigInt
+  totalCOP        BigInt
+  status          String    @default("SELECTED") @db.VarChar(20)
+  activatedAt     DateTime? @db.Timestamptz(3)
+  endedAt         DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, status])
+}
+
+model Household {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerUserId String   @unique @db.Uuid
+  name        String   @db.VarChar(80)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  members     HouseholdMember[]
+  invitations HouseholdInvitation[]
+  goals       SharedGoal[]
+}
+
+model HouseholdMember {
+  id           String    @id @default(uuid()) @db.Uuid
+  householdId  String    @db.Uuid
+  userId       String    @db.Uuid
+  role         String    @db.VarChar(20)
+  status       String    @default("ACTIVE") @db.VarChar(20)
+  seatAssigned Boolean   @default(false)
+  permissions  Json
+  consentId    String?   @db.Uuid
+  invitationId String?   @db.Uuid
+  joinedAt     DateTime  @default(now()) @db.Timestamptz(3)
+  leftAt       DateTime? @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+  household    Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId, status])
+  @@index([userId, status])
+}
+
+model HouseholdInvitation {
+  id                String    @id @default(uuid()) @db.Uuid
+  householdId       String    @db.Uuid
+  invitedBy         String    @db.Uuid
+  role              String    @db.VarChar(20)
+  seatAssigned      Boolean   @default(false)
+  tokenHash         String    @unique @db.Char(64)
+  inviteeName       String?   @db.VarChar(80)
+  channel           String?   @db.VarChar(20)
+  contactCiphertext String?   @db.Text
+  status            String    @default("PENDING") @db.VarChar(20)
+  expiresAt         DateTime  @db.Timestamptz(3)
+  acceptedBy        String?   @db.Uuid
+  acceptedAt        DateTime? @db.Timestamptz(3)
+  revokedAt         DateTime? @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  household         Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId, status])
+}
+
+model SharedGoal {
+  id            String    @id @default(uuid()) @db.Uuid
+  householdId   String    @db.Uuid
+  ownerUserId   String    @db.Uuid
+  title         String    @db.VarChar(160)
+  kind          String?   @db.VarChar(40)
+  targetCOP     BigInt
+  targetDate    DateTime? @db.Date
+  status        String    @default("ACTIVE") @db.VarChar(20)
+  completedAt   DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+  household     Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  contributions Contribution[]
+
+  @@index([householdId, status])
+}
+
+model Contribution {
+  id                String    @id @default(uuid()) @db.Uuid
+  goalId            String    @db.Uuid
+  householdId       String    @db.Uuid
+  contributorUserId String    @db.Uuid
+  amountCOP         BigInt
+  note              String?   @db.VarChar(280)
+  documentId        String?   @db.Uuid
+  status            String    @default("DECLARED") @db.VarChar(20)
+  declaredAt        DateTime  @default(now()) @db.Timestamptz(3)
+  resolvedBy        String?   @db.Uuid
+  resolvedAt        DateTime? @db.Timestamptz(3)
+  goal              SharedGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId, status])
+  @@index([contributorUserId, declaredAt])
+}
+
+model Evidence {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  type            String    @db.VarChar(40)
+  sourceKind      String    @db.VarChar(40)
+  sourceRef       String    @db.VarChar(200)
+  label           String    @db.VarChar(200)
+  value           Json?
+  valueCiphertext String?   @db.Text
+  status          String    @db.VarChar(20)
+  occurredAt      DateTime  @db.Timestamptz(3)
+  validUntil      DateTime? @db.Timestamptz(3)
+  validatedBy     String?   @db.VarChar(60)
+  validatedAt     DateTime? @db.Timestamptz(3)
+  consentId       String?   @db.Uuid
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, type, sourceRef])
+  @@index([userId, status])
+}
+
+model FinancialProfileSnapshot {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @db.Uuid
+  version           Int
+  reason            String   @db.VarChar(80)
+  summary           Json
+  payloadCiphertext String   @db.Text
+  contentHash       String   @db.Char(64)
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([userId, version])
+  @@index([userId, createdAt])
+}
+
+model TaxRuleVersion {
+  id             String    @id @default(uuid()) @db.Uuid
+  taxYear        Int
+  version        Int
+  uvtCOP         Int
+  wealthUvt      Int
+  incomeUvt      Int
+  cardSpendUvt   Int
+  purchasesUvt   Int
+  depositsUvt    Int
+  sourceDocument String    @db.Text
+  sourceUrl      String?   @db.Text
+  effectiveFrom  DateTime  @db.Date
+  effectiveTo    DateTime? @db.Date
+  status         String    @default("DRAFT") @db.VarChar(20)
+  notes          String?   @db.Text
+  createdBy      String?   @db.Uuid
+  approvedBy     String?   @db.Uuid
+  approvedAt     DateTime? @db.Timestamptz(3)
+  activatedAt    DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+  cases          FormalizationCase[]
+
+  @@unique([taxYear, version])
+  @@index([taxYear, status])
+}
+
+model FormalizationCase {
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String    @db.Uuid
+  taxYear              Int
+  status               String    @default("SIN_EVALUAR") @db.VarChar(32)
+  ruleVersionId        String?   @db.Uuid
+  mayHaveToFile        Boolean?
+  diagnosisCiphertext  String?   @db.Text
+  diagnosedAt          DateTime? @db.Timestamptz(3)
+  alreadyFiled         Boolean?
+  path                 String?   @db.VarChar(20)
+  preparation          Json?
+  consentId            String?   @db.Uuid
+  submittedAt          DateTime? @db.Timestamptz(3)
+  reviewerId           String?   @db.Uuid
+  reviewApprovedBy     String?   @db.Uuid
+  reviewApprovedAt     DateTime? @db.Timestamptz(3)
+  formNumberCiphertext String?   @db.Text
+  filedAt              DateTime? @db.Date
+  verifiedBy           String?   @db.Uuid
+  verifiedAt           DateTime? @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @db.Timestamptz(3)
+  ruleVersion          TaxRuleVersion? @relation(fields: [ruleVersionId], references: [id])
+  events               FormalizationEvent[]
+
+  @@unique([userId, taxYear])
+  @@index([status, updatedAt])
+}
+
+model FormalizationEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  caseId      String   @db.Uuid
+  userId      String   @db.Uuid
+  action      String   @db.VarChar(60)
+  fromStatus  String?  @db.VarChar(32)
+  toStatus    String   @db.VarChar(32)
+  actorUserId String?  @db.Uuid
+  actorRole   String?  @db.VarChar(40)
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  case        FormalizationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model UserDocument {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  purpose   String    @db.VarChar(40)
+  refId     String?   @db.Uuid
+  fileName  String    @db.VarChar(160)
+  mimeType  String    @db.VarChar(80)
+  sizeBytes Int
+  sha256    String    @db.Char(64)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  @@index([userId, purpose])
+  @@index([refId])
+}
+
+model CardAccount {
+  id                  String    @id @default(uuid()) @db.Uuid
+  userId              String    @db.Uuid
+  source              String    @default("SELF_DECLARED") @db.VarChar(20)
+  issuer              String    @db.VarChar(80)
+  alias               String?   @db.VarChar(60)
+  last4               String?   @db.Char(4)
+  creditLimitCOP      BigInt
+  usedBalanceCOP      BigInt
+  statementDay        Int
+  paymentDay          Int
+  minimumPaymentCOP   BigInt?
+  annualEffectiveRate Decimal?  @db.Decimal(8, 6)
+  archivedAt          DateTime? @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+  purchases           CardPurchase[]
+
+  @@index([userId, archivedAt])
+}
+
+model CardPurchase {
+  id            String   @id @default(uuid()) @db.Uuid
+  cardId        String   @db.Uuid
+  userId        String   @db.Uuid
+  amountCOP     BigInt
+  installments  Int
+  purchasedAt   DateTime @db.Date
+  description   String   @db.VarChar(160)
+  isCashAdvance Boolean  @default(false)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  card          CardAccount @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, purchasedAt])
+  @@index([userId, createdAt])
+}
+
+model CardGuidance {
+  id                  String    @id @default(uuid()) @db.Uuid
+  userId              String    @db.Uuid
+  cardId              String?   @db.Uuid
+  code                String    @db.VarChar(60)
+  severity            String    @db.VarChar(20)
+  title               String    @db.VarChar(160)
+  body                String    @db.Text
+  variables           Json
+  status              String    @default("SHOWN") @db.VarChar(20)
+  baselineUtilization Decimal?  @db.Decimal(6, 2)
+  measuredUtilization Decimal?  @db.Decimal(6, 2)
+  effectiveness       String?   @db.VarChar(20)
+  shownAt             DateTime  @default(now()) @db.Timestamptz(3)
+  respondedAt         DateTime? @db.Timestamptz(3)
+  measuredAt          DateTime? @db.Timestamptz(3)
+
+  @@index([userId, status])
+  @@index([userId, cardId, code])
+}
+
+model LifeProject {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @db.Uuid
+  kind               String    @db.VarChar(20)
+  title              String    @db.VarChar(160)
+  targetCOP          BigInt
+  savedCOP           BigInt    @default(0)
+  monthlyCapacityCOP BigInt?
+  targetDate         DateTime  @db.Date
+  status             String    @default("ACTIVE") @db.VarChar(20)
+  routeId            String?   @db.Uuid
+  goalId             String?   @db.Uuid
+  completedAt        DateTime? @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, status])
+}
+
+model OpenFinanceConnection {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  provider    String?   @db.VarChar(60)
+  institution String?   @db.VarChar(120)
+  status      String    @db.VarChar(32)
+  scopes      Json
+  consentId   String    @db.Uuid
+  externalId  String?   @unique @db.VarChar(160)
+  errorCode   String?   @db.VarChar(80)
+  requestedAt DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt   DateTime  @db.Timestamptz(3)
+  activatedAt DateTime? @db.Timestamptz(3)
+  revokedAt   DateTime? @db.Timestamptz(3)
+  lastSyncAt  DateTime? @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, status])
+}
+
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  kind      String    @db.VarChar(60)
+  title     String    @db.VarChar(160)
+  body      String    @db.Text
+  href      String?   @db.VarChar(200)
+  dedupeKey String?   @db.VarChar(200)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  readAt    DateTime? @db.Timestamptz(3)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }

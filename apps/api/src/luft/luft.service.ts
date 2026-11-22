@@ -8,11 +8,16 @@ import { CryptoService } from '../common/crypto.service';
 import { DatabaseService } from '../database/database.service';
 import { IntegrationService } from '../integrations/integration.service';
 import { QueueService } from '../integrations/queue.service';
+import { CONSENT_TEXTS, CONSENT_VERSION } from '../consents/consent-catalog';
+import { NotificationsService } from '../notifications/notifications.service';
 import { RealtimeService } from '../realtime/realtime.service';
-import { progressSummary } from './journey';
+import { RouteService } from '../route/route.service';
+import { pickDashboardCredit, progressSummary } from './journey';
 import { JourneyService } from './journey.service';
 
 const CONSENTS: Record<string, string> = {
+  HOUSEHOLD_SHARING: CONSENT_TEXTS.HOUSEHOLD_SHARING,
+  TAX_ASSISTANCE: CONSENT_TEXTS.TAX_ASSISTANCE,
   BUREAU_QUERY:
     'Autorizo de manera previa, expresa e informada a LUFT para consultar mi información ante operadores de información financiera con el propósito de realizar mi diagnóstico y medir la evolución de mi historial.',
   SCORE_SHARE_WITH_STARTIF:
@@ -32,6 +37,8 @@ export class LuftService {
     private readonly realtime: RealtimeService,
     private readonly config: ConfigService,
     private readonly journey: JourneyService,
+    private readonly routes: RouteService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   pushConfig() {
@@ -47,8 +54,10 @@ export class LuftService {
       progress,
       streak,
       scoreInquiries,
-      application,
+      applications,
       pqr,
+      notificationsUnread,
+      route,
     ] = await Promise.all([
       this.db.luft.financialProfile.findUnique({ where: { userId: user.id } }),
       this.db.luft.goal.findMany({
@@ -67,9 +76,10 @@ export class LuftService {
         orderBy: { requestedAt: 'desc' },
         take: 6,
       }),
-      this.db.startif.creditApplication.findFirst({
+      this.db.startif.creditApplication.findMany({
         where: { userId: user.id },
         orderBy: { createdAt: 'desc' },
+        take: 12,
         include: {
           loan: {
             include: {
@@ -86,7 +96,15 @@ export class LuftService {
           status: { in: ['OPEN', 'IN_REVIEW', 'WAITING_USER'] },
         },
       }),
+      this.notifications.unread(user.id),
+      this.routes.summary(user),
     ]);
+    // A loan with unpaid installments wins; otherwise the most recent application.
+    const application = pickDashboardCredit(applications);
+    // Payment badges keep reflecting the last disbursed credit while a new
+    // application (without a loan yet) is the one shown.
+    const progressLoan =
+      application?.loan ?? applications.find((item) => item.loan)?.loan;
     const completedLessons = new Set(
       progress
         .filter((item) => item.completedAt)
@@ -111,8 +129,8 @@ export class LuftService {
         (item) => item.completedAt && item.completedAt.getTime() >= weekAgo,
       ).length,
       streakDays: streak?.currentDays ?? 0,
-      creditActive: Boolean(application?.loan),
-      installments: application?.loan?.installments ?? [],
+      creditActive: Boolean(progressLoan),
+      installments: progressLoan?.installments ?? [],
       profileBlocksCompleted: journey.completed,
       documentsUploaded: new Set(journey.documents.map((item) => item.kind))
         .size,
@@ -148,6 +166,8 @@ export class LuftService {
       })),
       scoreHistory: scoreInquiries,
       credit: application ? this.serializeCredit(application) : null,
+      route,
+      notificationsUnread,
       openPqr: pqr,
       integrations: this.integrations.status(),
     };
@@ -158,17 +178,27 @@ export class LuftService {
     body: unknown,
     metadata: { ip?: string; userAgent?: string },
   ) {
+    const deviceMeta = z.record(z.string(), z.unknown()).optional();
     const input = z
-      .object({
-        kind: z.enum([
-          'BUREAU_QUERY',
-          'SCORE_SHARE_WITH_STARTIF',
-          'COMMUNICATIONS',
-        ]),
-        accepted: z.literal(true),
-        version: z.literal('2026-09-01'),
-        deviceMeta: z.record(z.string(), z.unknown()).optional(),
-      })
+      .discriminatedUnion('kind', [
+        z.object({
+          kind: z.enum([
+            'BUREAU_QUERY',
+            'SCORE_SHARE_WITH_STARTIF',
+            'COMMUNICATIONS',
+          ]),
+          accepted: z.literal(true),
+          version: z.literal('2026-09-01'),
+          deviceMeta,
+        }),
+        // V2 authorizations can be granted again here after a revocation.
+        z.object({
+          kind: z.enum(['HOUSEHOLD_SHARING', 'TAX_ASSISTANCE']),
+          accepted: z.literal(true),
+          version: z.literal(CONSENT_VERSION),
+          deviceMeta,
+        }),
+      ])
       .parse(body);
     const text = CONSENTS[input.kind];
     const consent = await this.db.luft.consent.create({
@@ -321,6 +351,9 @@ export class LuftService {
       archetype,
       completionPercent: profile.completionPercent,
     });
+    // The legacy questionnaire result is kept as history; the versioned engine
+    // then assigns the archetype of the user's category.
+    await this.routes.syncQuietly(user.id, 'questionnaire');
     return { result, profile };
   }
 
@@ -377,6 +410,7 @@ export class LuftService {
       create: { ...input, userId: user.id, completedAt: new Date() },
       update: { score: input.score, completedAt: new Date() },
     });
+    await this.routes.syncQuietly(user.id, 'lesson_completed');
     const now = startOfDay(new Date());
     const current = await this.db.luft.streak.findUnique({
       where: { userId: user.id },

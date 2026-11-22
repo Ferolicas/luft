@@ -5,7 +5,6 @@ import {
   Get,
   Param,
   Patch,
-  PayloadTooLargeException,
   Post,
   Put,
   Req,
@@ -17,28 +16,10 @@ import type { Request, Response } from 'express';
 import { CurrentUser } from '../auth/auth.decorators';
 import { AuthGuard } from '../auth/auth.guard';
 import type { AuthenticatedUser } from '../auth/auth.types';
+import { readBody, uploadedFileName } from './http';
 import { MAX_DOCUMENT_BYTES } from './journey';
 import { JourneyService } from './journey.service';
 import { LuftService } from './luft.service';
-
-/** Reads a binary request body with a hard size cap (no multipart parser needed). */
-function readBody(request: Request, limit: number) {
-  return new Promise<Buffer>((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    request.on('data', (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > limit) {
-        reject(new PayloadTooLargeException('El archivo supera los 10 MB.'));
-        request.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    request.on('end', () => resolve(Buffer.concat(chunks)));
-    request.on('error', reject);
-  });
-}
 
 @Controller('luft')
 @UseGuards(AuthGuard)
@@ -132,13 +113,12 @@ export class LuftController {
     @Req() request: Request,
   ) {
     const buffer = await readBody(request, MAX_DOCUMENT_BYTES);
-    let fileName = 'documento';
-    try {
-      fileName = decodeURIComponent(request.get('x-file-name') ?? fileName);
-    } catch {
-      /* se conserva el nombre genérico */
-    }
-    return this.journey.uploadDocument(user, kind, fileName, buffer);
+    return this.journey.uploadDocument(
+      user,
+      kind,
+      uploadedFileName(request),
+      buffer,
+    );
   }
   @Get('documents/:id/file') async documentFile(
     @CurrentUser() user: AuthenticatedUser,

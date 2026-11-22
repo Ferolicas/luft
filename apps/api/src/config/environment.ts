@@ -5,6 +5,13 @@ const optionalSecret = z.preprocess(
   z.string().min(16).optional(),
 );
 
+const emptyAsUndefined = (value: unknown) => (value === '' ? undefined : value);
+const optionalUrl = z.preprocess(emptyAsUndefined, z.string().url().optional());
+const optionalText = z.preprocess(
+  emptyAsUndefined,
+  z.string().min(1).max(500).optional(),
+);
+
 const schema = z
   .object({
     NODE_ENV: z
@@ -40,8 +47,36 @@ const schema = z
       .enum(['live', 'configuration_required'])
       .default('configuration_required'),
     PRIVATE_STORAGE_PATH: z.string().min(1),
+    OPENFINANCE_ENABLED: z.enum(['true', 'false']).default('false'),
+    OPENFINANCE_BASE_URL: optionalUrl,
+    OPENFINANCE_CLIENT_ID: optionalText,
+    OPENFINANCE_CLIENT_SECRET: optionalSecret,
+    OPENFINANCE_WEBHOOK_SECRET: optionalSecret,
+    OPENFINANCE_CONSENT_ENDPOINT: optionalText,
+    OPENFINANCE_CONSENT_DAYS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(90),
   })
   .superRefine((environment, context) => {
+    // Open Finance fails closed: enabling it without every credential is a
+    // configuration error, never a partially working integration.
+    if (environment.OPENFINANCE_ENABLED === 'true')
+      for (const key of [
+        'OPENFINANCE_BASE_URL',
+        'OPENFINANCE_CLIENT_ID',
+        'OPENFINANCE_CLIENT_SECRET',
+        'OPENFINANCE_WEBHOOK_SECRET',
+        'OPENFINANCE_CONSENT_ENDPOINT',
+      ] as const)
+        if (!environment[key])
+          context.addIssue({
+            code: 'custom',
+            path: [key],
+            message: 'es obligatorio cuando OPENFINANCE_ENABLED=true',
+          });
     if (
       environment.REGISTRATION_MODE === 'invite' &&
       !environment.REGISTRATION_INVITE_CODE
