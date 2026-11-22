@@ -7,6 +7,15 @@ datasource db {
   provider = "postgresql"
 }
 
+// Reglas que solo existen en SQL (migración 202611220003_credit_products_v2) y
+// que Prisma no puede expresar. Al escribir una migración nueva a partir de
+// `prisma migrate diff`, NO borres estos objetos aunque el diff lo proponga:
+//   - índice único parcial "CreditProduct_one_active_per_code" (una sola
+//     versión ACTIVE por código de producto);
+//   - CHECK de "CreditProduct" (secuencia, montos, plazos, versión vigente
+//     completa), "Disbursement" (un giro COMPLETED exige referencia y fecha),
+//     "Payment" (creditedCOP, abono con préstamo) y "LoanPrepayment" (montos).
+
 enum CreditStatus {
   DRAFT
   PENDING_KYC
@@ -19,6 +28,25 @@ enum CreditStatus {
   COMPLETED
   DEFAULTED
   CONFIGURATION_REQUIRED
+  WRITTEN_OFF
+}
+
+enum CreditProductStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  SUPERSEDED
+}
+
+enum PaymentKind {
+  INSTALLMENT
+  PREPAYMENT
+}
+
+enum DisbursementStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
 }
 
 enum ProcessStatus {
@@ -58,169 +86,287 @@ enum PqrStatus {
 }
 
 model StartifConsent {
-  id           String   @id @default(uuid()) @db.Uuid
-  userId       String   @db.Uuid
-  kind         String   @db.VarChar(80)
-  version      String   @db.VarChar(32)
-  textSnapshot String   @db.Text
-  textHash     String   @db.Char(64)
-  ipHash       String?  @db.Char(64)
-  userAgent    String?  @db.VarChar(500)
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  kind         String    @db.VarChar(80)
+  version      String    @db.VarChar(32)
+  textSnapshot String    @db.Text
+  textHash     String    @db.Char(64)
+  ipHash       String?   @db.Char(64)
+  userAgent    String?   @db.VarChar(500)
   deviceMeta   Json?
-  acceptedAt   DateTime @default(now()) @db.Timestamptz(3)
+  acceptedAt   DateTime  @default(now()) @db.Timestamptz(3)
   revokedAt    DateTime? @db.Timestamptz(3)
 
   @@index([userId, kind, acceptedAt])
 }
 
+/// Producto de crédito parametrizado y versionado. Cada cambio de condiciones
+/// es una versión nueva; las solicitudes y los préstamos guardan su propia copia
+/// de los parámetros, de modo que una versión posterior nunca los altera.
+/// Solo puede existir una versión ACTIVE por código (índice único parcial en SQL).
+model CreditProduct {
+  id                String              @id @default(uuid()) @db.Uuid
+  code              String              @db.VarChar(40)
+  version           Int
+  name              String              @db.VarChar(120)
+  purpose           String              @db.VarChar(80)
+  description       String?             @db.Text
+  sequence          Int
+  principalCOP      BigInt?
+  minPrincipalCOP   BigInt?
+  maxPrincipalCOP   BigInt?
+  termMonths        Int?
+  monthlyRate       Decimal?            @db.Decimal(8, 6)
+  geometricDecrease Decimal?            @db.Decimal(8, 6)
+  disbursementMode  String              @db.VarChar(40)
+  requirements      Json?
+  defaultAfterDays  Int                 @default(30)
+  status            CreditProductStatus @default(DRAFT)
+  statusReason      String?             @db.Text
+  effectiveFrom     DateTime?           @db.Timestamptz(3)
+  effectiveTo       DateTime?           @db.Timestamptz(3)
+  createdBy         String?             @db.Uuid
+  activatedBy       String?             @db.Uuid
+  suspendedBy       String?             @db.Uuid
+  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime            @updatedAt @db.Timestamptz(3)
+  applications      CreditApplication[]
+  loans             Loan[]
+
+  @@unique([code, version])
+  @@index([code, status])
+}
+
 model CreditApplication {
-  id                 String       @id @default(uuid()) @db.Uuid
-  userId             String       @db.Uuid
-  amountCOP          BigInt
-  termMonths         Int
-  requestedRateMonthly Decimal?   @db.Decimal(8, 6)
-  approvedRateMonthly  Decimal?   @db.Decimal(8, 6)
-  usuryRateId        String?      @db.Uuid
-  purpose            String       @default("SERVICIO_LUFT") @db.VarChar(80)
-  status             CreditStatus @default(DRAFT)
-  submittedAt        DateTime?    @db.Timestamptz(3)
-  decidedAt          DateTime?    @db.Timestamptz(3)
-  decisionReason     String?      @db.Text
-  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
-  kycProcesses       KycProcess[]
-  signatures         SignatureEnvelope[]
-  loan               Loan?
-  usuryRate          UsuryRate?   @relation(fields: [usuryRateId], references: [id])
+  id                   String              @id @default(uuid()) @db.Uuid
+  userId               String              @db.Uuid
+  productId            String?             @db.Uuid
+  productCode          String              @default("BUILDER_1") @db.VarChar(40)
+  productVersion       Int?
+  amountCOP            BigInt
+  termMonths           Int
+  requestedRateMonthly Decimal?            @db.Decimal(8, 6)
+  approvedRateMonthly  Decimal?            @db.Decimal(8, 6)
+  geometricDecrease    Decimal?            @db.Decimal(8, 6)
+  usuryRateId          String?             @db.Uuid
+  purpose              String              @default("SERVICIO_LUFT") @db.VarChar(80)
+  purposeDescription   String?             @db.Text
+  status               CreditStatus        @default(DRAFT)
+  submittedAt          DateTime?           @db.Timestamptz(3)
+  decidedAt            DateTime?           @db.Timestamptz(3)
+  decisionReason       String?             @db.Text
+  createdAt            DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime            @updatedAt @db.Timestamptz(3)
+  kycProcesses         KycProcess[]
+  signatures           SignatureEnvelope[]
+  loan                 Loan?
+  disbursement         Disbursement?
+  usuryRate            UsuryRate?          @relation(fields: [usuryRateId], references: [id])
+  product              CreditProduct?      @relation(fields: [productId], references: [id])
 
   @@index([userId, createdAt])
   @@index([status, submittedAt])
+  @@index([productId])
 }
 
 model KycProcess {
-  id                 String        @id @default(uuid()) @db.Uuid
-  applicationId      String        @db.Uuid
-  userId             String        @db.Uuid
-  provider           String        @default("TRUORA") @db.VarChar(40)
-  externalId         String?       @unique @db.VarChar(160)
-  status             ProcessStatus @default(PENDING)
-  verificationUrl    String?       @db.Text
-  resultCiphertext   String?       @db.Text
-  failureReason      String?       @db.Text
-  startedAt          DateTime      @default(now()) @db.Timestamptz(3)
-  completedAt        DateTime?     @db.Timestamptz(3)
-  application        CreditApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  id               String            @id @default(uuid()) @db.Uuid
+  applicationId    String            @db.Uuid
+  userId           String            @db.Uuid
+  provider         String            @default("TRUORA") @db.VarChar(40)
+  externalId       String?           @unique @db.VarChar(160)
+  status           ProcessStatus     @default(PENDING)
+  verificationUrl  String?           @db.Text
+  resultCiphertext String?           @db.Text
+  failureReason    String?           @db.Text
+  startedAt        DateTime          @default(now()) @db.Timestamptz(3)
+  completedAt      DateTime?         @db.Timestamptz(3)
+  application      CreditApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 
   @@index([userId, startedAt])
 }
 
 model SignatureEnvelope {
-  id                  String        @id @default(uuid()) @db.Uuid
-  applicationId       String        @db.Uuid
-  userId              String        @db.Uuid
-  status              ProcessStatus @default(PENDING)
-  documentVersion     String        @db.VarChar(32)
-  documentSnapshot    String        @db.Text
-  documentHash        String        @db.Char(64)
-  signatureCiphertext String?       @db.Text
-  otpChallengeId      String?       @db.Uuid
-  ipHash              String?       @db.Char(64)
-  userAgent           String?       @db.VarChar(500)
+  id                  String            @id @default(uuid()) @db.Uuid
+  applicationId       String            @db.Uuid
+  userId              String            @db.Uuid
+  status              ProcessStatus     @default(PENDING)
+  documentVersion     String            @db.VarChar(32)
+  documentSnapshot    String            @db.Text
+  documentHash        String            @db.Char(64)
+  signatureCiphertext String?           @db.Text
+  otpChallengeId      String?           @db.Uuid
+  ipHash              String?           @db.Char(64)
+  userAgent           String?           @db.VarChar(500)
   deviceMeta          Json?
-  signedAt            DateTime?     @db.Timestamptz(3)
-  createdAt           DateTime      @default(now()) @db.Timestamptz(3)
+  signedAt            DateTime?         @db.Timestamptz(3)
+  createdAt           DateTime          @default(now()) @db.Timestamptz(3)
   application         CreditApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
 }
 
 model UsuryRate {
-  id                  String   @id @default(uuid()) @db.Uuid
-  category            String   @db.VarChar(100)
-  annualEffectiveRate Decimal  @db.Decimal(8, 5)
-  effectiveFrom       DateTime @db.Date
-  effectiveTo         DateTime @db.Date
-  sourceUrl           String   @db.Text
-  sourceDocumentHash  String?  @db.Char(64)
-  verifiedAt          DateTime @db.Timestamptz(3)
-  createdBy           String   @db.Uuid
-  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  id                  String              @id @default(uuid()) @db.Uuid
+  category            String              @db.VarChar(100)
+  annualEffectiveRate Decimal             @db.Decimal(8, 5)
+  effectiveFrom       DateTime            @db.Date
+  effectiveTo         DateTime            @db.Date
+  sourceUrl           String              @db.Text
+  sourceDocumentHash  String?             @db.Char(64)
+  verifiedAt          DateTime            @db.Timestamptz(3)
+  createdBy           String              @db.Uuid
+  createdAt           DateTime            @default(now()) @db.Timestamptz(3)
   applications        CreditApplication[]
 
   @@unique([category, effectiveFrom])
 }
 
 model Loan {
-  id                   String       @id @default(uuid()) @db.Uuid
-  applicationId        String       @unique @db.Uuid
-  userId               String       @db.Uuid
-  principalCOP         BigInt
-  monthlyRate          Decimal      @db.Decimal(8, 6)
-  termMonths           Int
-  geometricDecrease    Decimal      @default(0.150000) @db.Decimal(8, 6)
-  status               CreditStatus @default(ACTIVE)
+  id                    String            @id @default(uuid()) @db.Uuid
+  applicationId         String            @unique @db.Uuid
+  userId                String            @db.Uuid
+  productId             String?           @db.Uuid
+  productCode           String            @default("BUILDER_1") @db.VarChar(40)
+  productVersion        Int?
+  purpose               String            @default("SERVICIO_LUFT") @db.VarChar(80)
+  principalCOP          BigInt
+  monthlyRate           Decimal           @db.Decimal(8, 6)
+  termMonths            Int
+  geometricDecrease     Decimal           @default(0.200000) @db.Decimal(8, 6)
+  defaultAfterDays      Int               @default(30)
+  status                CreditStatus      @default(ACTIVE)
   outstandingBalanceCOP BigInt
-  disbursedAt          DateTime?    @db.Timestamptz(3)
-  closedAt             DateTime?    @db.Timestamptz(3)
-  createdAt            DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt            DateTime     @updatedAt @db.Timestamptz(3)
-  application          CreditApplication @relation(fields: [applicationId], references: [id])
-  installments         Installment[]
-  virtualCard          VirtualCard?
+  disbursedAt           DateTime?         @db.Timestamptz(3)
+  defaultedAt           DateTime?         @db.Timestamptz(3)
+  writtenOffAt          DateTime?         @db.Timestamptz(3)
+  writtenOffBy          String?           @db.Uuid
+  writtenOffReason      String?           @db.Text
+  closedAt              DateTime?         @db.Timestamptz(3)
+  createdAt             DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime          @updatedAt @db.Timestamptz(3)
+  application           CreditApplication @relation(fields: [applicationId], references: [id])
+  product               CreditProduct?    @relation(fields: [productId], references: [id])
+  installments          Installment[]
+  virtualCard           VirtualCard?
+  disbursement          Disbursement?
+  payments              Payment[]
+  prepayments           LoanPrepayment[]
 
   @@index([userId, status])
+  @@index([productId])
+}
+
+/// Desembolso de un crédito aprobado. SERVICE_FINANCING financia el servicio
+/// LUFT (no hay giro de dinero); TRANSFER queda PENDING hasta que finanzas
+/// registra la referencia y la fecha reales del giro.
+model Disbursement {
+  id            String             @id @default(uuid()) @db.Uuid
+  applicationId String             @unique @db.Uuid
+  loanId        String?            @unique @db.Uuid
+  userId        String             @db.Uuid
+  productCode   String             @db.VarChar(40)
+  kind          String             @db.VarChar(40)
+  purpose       String             @db.VarChar(80)
+  amountCOP     BigInt
+  status        DisbursementStatus @default(PENDING)
+  reference     String?            @unique @db.VarChar(160)
+  channel       String?            @db.VarChar(80)
+  note          String?            @db.Text
+  disbursedAt   DateTime?          @db.Timestamptz(3)
+  createdBy     String?            @db.Uuid
+  registeredBy  String?            @db.Uuid
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime           @updatedAt @db.Timestamptz(3)
+  application   CreditApplication  @relation(fields: [applicationId], references: [id])
+  loan          Loan?              @relation(fields: [loanId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+/// Abono anticipado a capital ya aplicado. Guarda el plan anterior completo
+/// para poder revertirlo si el proveedor reembolsa el pago.
+model LoanPrepayment {
+  id               String       @id @default(uuid()) @db.Uuid
+  loanId           String       @db.Uuid
+  paymentId        String       @unique @db.Uuid
+  userId           String       @db.Uuid
+  amountCOP        BigInt
+  appliedCOP       BigInt
+  balanceBeforeCOP BigInt
+  balanceAfterCOP  BigInt
+  loanStatusBefore CreditStatus
+  closedLoan       Boolean      @default(false)
+  previousPlan     Json
+  newPlan          Json
+  appliedAt        DateTime     @default(now()) @db.Timestamptz(3)
+  reversedAt       DateTime?    @db.Timestamptz(3)
+  reversalMode     String?      @db.VarChar(40)
+  loan             Loan         @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  payment          Payment      @relation(fields: [paymentId], references: [id])
+
+  @@index([loanId, appliedAt])
 }
 
 model Installment {
-  id             String            @id @default(uuid()) @db.Uuid
-  loanId         String            @db.Uuid
-  sequence       Int
-  dueDate        DateTime          @db.Date
+  id                String            @id @default(uuid()) @db.Uuid
+  loanId            String            @db.Uuid
+  sequence          Int
+  dueDate           DateTime          @db.Date
   openingBalanceCOP BigInt
-  amountCOP      BigInt
-  principalCOP   BigInt
-  interestCOP    BigInt
+  amountCOP         BigInt
+  principalCOP      BigInt
+  interestCOP       BigInt
   closingBalanceCOP BigInt
-  paidCOP        BigInt            @default(0)
-  status         InstallmentStatus @default(PENDING)
-  paidAt         DateTime?         @db.Timestamptz(3)
-  loan           Loan              @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  payments       Payment[]
+  paidCOP           BigInt            @default(0)
+  status            InstallmentStatus @default(PENDING)
+  paidAt            DateTime?         @db.Timestamptz(3)
+  loan              Loan              @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  payments          Payment[]
 
   @@unique([loanId, sequence])
   @@index([dueDate, status])
 }
 
 model Payment {
-  id                String        @id @default(uuid()) @db.Uuid
-  userId            String        @db.Uuid
-  installmentId     String?       @db.Uuid
-  provider          String        @default("MERCADOPAGO") @db.VarChar(40)
-  externalId        String?       @unique @db.VarChar(160)
-  idempotencyKey    String        @unique @db.Uuid
-  amountCOP         BigInt
-  status            PaymentStatus @default(CREATED)
-  redirectUrl       String?       @db.Text
-  statusDetail      String?       @db.VarChar(160)
-  providerPayloadHash String?      @db.Char(64)
-  approvedAt        DateTime?     @db.Timestamptz(3)
-  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
-  installment       Installment?  @relation(fields: [installmentId], references: [id])
+  id                  String          @id @default(uuid()) @db.Uuid
+  userId              String          @db.Uuid
+  kind                PaymentKind     @default(INSTALLMENT)
+  installmentId       String?         @db.Uuid
+  loanId              String?         @db.Uuid
+  provider            String          @default("MERCADOPAGO") @db.VarChar(40)
+  externalId          String?         @unique @db.VarChar(160)
+  idempotencyKey      String          @unique @db.Uuid
+  amountCOP           BigInt
+  /// Parte del pago efectivamente aplicada al crédito (lo que un reembolso revierte).
+  creditedCOP         BigInt        @default(0)
+  status              PaymentStatus   @default(CREATED)
+  redirectUrl         String?         @db.Text
+  statusDetail        String?         @db.VarChar(160)
+  providerPayloadHash String?         @db.Char(64)
+  approvedAt          DateTime?       @db.Timestamptz(3)
+  createdAt           DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime        @updatedAt @db.Timestamptz(3)
+  installment         Installment?    @relation(fields: [installmentId], references: [id])
+  loan                Loan?           @relation(fields: [loanId], references: [id])
+  prepayment          LoanPrepayment?
 
   @@index([userId, createdAt])
   @@index([status, updatedAt])
+  @@index([loanId, kind])
 }
 
 model VirtualCard {
-  id             String   @id @default(uuid()) @db.Uuid
-  loanId         String   @unique @db.Uuid
-  userId         String   @db.Uuid
-  last4          String   @db.Char(4)
-  fixedLimitCOP  BigInt
-  status         String   @default("ACTIVE") @db.VarChar(32)
-  createdAt      DateTime @default(now()) @db.Timestamptz(3)
-  loan           Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  id            String   @id @default(uuid()) @db.Uuid
+  loanId        String   @unique @db.Uuid
+  userId        String   @db.Uuid
+  last4         String   @db.Char(4)
+  fixedLimitCOP BigInt
+  status        String   @default("ACTIVE") @db.VarChar(32)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  loan          Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -259,4 +405,3 @@ model Pqr {
   @@index([status, dueAt])
   @@index([userId, createdAt])
 }
-
