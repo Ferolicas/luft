@@ -12,15 +12,16 @@ import { ROLE_LABEL } from "@/lib/admin/nav";
 let catalogCache: Promise<MatchingCatalog> | null = null;
 
 /** Catálogo de campos, operadores y estados del motor (`GET /admin/matching/catalog`), una sola vez por sesión. */
-export function useMatchingCatalog() {
+export function useMatchingCatalog(enabled = true) {
   const [catalog, setCatalog] = useState<MatchingCatalog | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     catalogCache ??= get<MatchingCatalog>("/admin/matching/catalog").catch((cause) => { catalogCache = null; throw cause; });
     catalogCache.then((result) => { if (alive) setCatalog(result); }).catch((cause) => { if (alive) setProblem(problemOf(cause)); });
     return () => { alive = false; };
-  }, []);
+  }, [enabled]);
   return { catalog, problem };
 }
 

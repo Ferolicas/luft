@@ -12,16 +12,17 @@ import { dateTime, integer, percent, today } from "@/lib/admin/format";
 import { get, type Paged, send } from "@/lib/admin/http";
 import { label } from "@/lib/admin/labels";
 import type { MatchingCatalog, Product, RuleInput, Version } from "@/lib/admin/matching-types";
+import { can } from "@/lib/admin/nav";
 
 export default function BacktestsPage() {
   const router = useRouter();
-  const { notify } = useConsole();
-  const { catalog, problem } = useMatchingCatalog();
+  const { user, notify } = useConsole();
+  // El catálogo de políticas lo leen riesgo, comercial y superadministración; finanzas solo consulta resultados.
+  const cannotLaunch = !can("readPolicies", user.role);
+  const { catalog, problem } = useMatchingCatalog(!cannotLaunch);
   const [page, setPage] = useState(1);
   const [launching, setLaunching] = useState(false);
   const backtests = useLoad(() => get<Paged<BacktestRow>>(`/admin/analytics/backtests?page=${page}`), [page]);
-  // El catálogo de políticas lo leen riesgo, comercial y superadministración; finanzas solo consulta resultados.
-  const cannotLaunch = problem !== null && (problem.status === 401 || problem.status === 403);
 
   return (
     <>

@@ -141,6 +141,7 @@ export const CAN = {
   editCatalog: ["COMMERCIAL", "RISK", "SUPERADMIN"],
   deleteCategory: ["SUPERADMIN"],
   editPlans: ["COMMERCIAL", "FINANCE", "SUPERADMIN"],
+  readPolicies: ["RISK", "COMMERCIAL", "SUPERADMIN"],
   writePolicies: ["RISK", "SUPERADMIN"],
   managePartners: ["SUPERADMIN"],
   reviewRuns: ["RISK", "SUPERADMIN"],
