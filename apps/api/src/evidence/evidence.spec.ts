@@ -234,6 +234,25 @@ describe('evidence from real facts', () => {
 });
 
 describe('notifications catalog', () => {
+  it('notifies the person when an entity receives or answers a presentation', () => {
+    expect(
+      notificationFor('matching:presentation', {
+        id: 'm1',
+        status: 'PRESENTADA',
+      }),
+    ).toMatchObject({
+      kind: 'matching',
+      href: '/app/oportunidades',
+      dedupeKey: 'matching:m1:PRESENTADA',
+    });
+    expect(
+      notificationFor('matching:presentation', {
+        id: 'm1',
+        status: 'AUTORIZADA',
+      }),
+    ).toBeNull();
+  });
+
   it('turns whitelisted events into Spanish notifications with a link', () => {
     expect(
       notificationFor('payment:status', {

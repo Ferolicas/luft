@@ -23,6 +23,7 @@ export const NOTIFICATION_EVENTS = [
   'household:contribution',
   'formalization:status',
   'cards:guidance',
+  'matching:presentation',
 ] as const;
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
 
@@ -157,6 +158,37 @@ export function notificationFor(
           `${id}:${status}`,
         );
       return null;
+    }
+    case 'matching:presentation': {
+      const id = ref(payload, 'id');
+      const messages: Record<string, [string, string]> = {
+        PRESENTADA: [
+          'Presentamos tu solicitud a la entidad',
+          'La entidad que autorizaste ya recibió tu información. Te avisaremos cuando responda.',
+        ],
+        APROBADA: [
+          'La entidad respondió tu solicitud',
+          'Tu solicitud fue aprobada por la entidad. Revisa las condiciones.',
+        ],
+        RECHAZADA: [
+          'La entidad respondió tu solicitud',
+          'Esta vez la entidad no aprobó tu solicitud. Revisa el motivo y tus otras oportunidades.',
+        ],
+        DESISTIDA: [
+          'Se cerró una presentación',
+          'La presentación a la entidad quedó cerrada sin decisión.',
+        ],
+      };
+      const message = messages[status];
+      return message
+        ? draft(
+            'matching',
+            message[0],
+            message[1],
+            '/app/oportunidades',
+            `${id}:${status}`,
+          )
+        : null;
     }
     case 'pqr:status': {
       const id = ref(payload, 'id');
