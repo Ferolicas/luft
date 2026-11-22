@@ -138,7 +138,7 @@ export interface CreditView {
   loan?: null | { id: string; status?: string; termMonths?: number; disbursedAt?: string | null; outstandingBalanceCOP: string | number; principalCOP: string | number; installments: CreditInstallment[] };
 }
 export interface SecondCredit {
-  product: null | { code: string; name: string; purpose?: string; description?: string | null; version?: number; principalCOP?: number | null; minPrincipalCOP?: number | null; maxPrincipalCOP?: number | null; termMonths?: number | null; monthlyRate?: number | null };
+  product: null | { code: string; name: string; purpose: string; version: number; amountCOP: number; minAmountCOP: number; maxAmountCOP: number; termMonths: number; monthlyRate: number; geometricDecrease: number; firstInstallmentCOP: number; lastInstallmentCOP: number; totalCOP: number; totalInterestCOP: number };
   eligible: boolean;
   requirements: Array<{ code: string; label: string; met: boolean; detail?: string }>;
   purposes: Array<{ code: string; label: string }>;
