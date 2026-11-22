@@ -47,7 +47,7 @@ export default function EffectivenessPage() {
               </div>
               <Panel title="Puntaje inicial frente a puntaje final" description="Promedio por cosecha (mes de originación del crédito). Solo cuentan las consultas completadas a las centrales.">
                 {withBoth.length === 0 ? <Empty title="Aún no hay puntajes para comparar">Se necesitan personas con una consulta inicial y una final completadas. Sin proveedor de centrales configurado no hay consultas.</Empty> : (
-                  <div className="cs-grid cs-grid-side">
+                  <div className="cs-grid cs-grid-chart">
                     <ColumnChart
                       label="Puntaje promedio inicial y final por cosecha"
                       seriesNames={["Puntaje inicial", "Puntaje final"]}

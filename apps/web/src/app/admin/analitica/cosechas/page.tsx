@@ -155,7 +155,7 @@ function CohortsView({ data, bucket, setBucket, selected, setSelected, showDefin
           {active && (
             <Panel title={`Curva de mora · cosecha ${cohortName(active, data.groupBy)}`} description="Porcentaje de créditos de la cosecha con mora de 30, 60 y 90 días o más, por mes en libros.">
               {active.monthsOnBooks.length === 0 ? <Empty title="Esta cosecha aún no cumple su primer mes en libros" /> : (
-                <div className="cs-grid cs-grid-2" style={{ alignItems: "start" }}>
+                <div className="cs-grid cs-grid-chart">
                   <LineChart
                     label={`Curva de mora de la cosecha ${cohortName(active, data.groupBy)}`}
                     xLabel="Mes en libros"

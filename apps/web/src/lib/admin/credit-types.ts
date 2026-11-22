@@ -80,6 +80,8 @@ export interface Application {
   kycProcesses: Array<{ id: string; status: string; completedAt: string | null; failureReason: string | null }>;
   signatures: Array<{ id: string; status: string; documentVersion: string | null; documentSnapshot: string | null; signedAt?: string | null; createdAt?: string }>;
   loan: { id: string; status: string; principalCOP: string; outstandingBalanceCOP: string; disbursedAt: string | null } | null;
+  /** Condiciones cotizadas antes (solo informativo); la API lo incluye cuando existe. */
+  previousTerms?: Record<string, unknown> | null;
 }
 
 export interface Eligibility {

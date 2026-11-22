@@ -41,7 +41,7 @@ export default function PresentationPage() {
                 {data.shared ? (
                   <div className="cs-stack" style={{ gap: 14 }}>
                     <Facts
-                      columns={4}
+                      columns={2}
                       items={[
                         { label: "Nombre", value: data.shared.applicant.fullName },
                         { label: "Documento", value: data.shared.applicant.document },

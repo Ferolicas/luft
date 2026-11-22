@@ -33,7 +33,7 @@ export default function InstitutionPresentationPage() {
                 {data.dataAvailable && data.applicant ? (
                   <div className="cs-stack" style={{ gap: 14 }}>
                     <Facts
-                      columns={4}
+                      columns={2}
                       items={[
                         { label: "Nombre", value: data.applicant.fullName },
                         { label: "Documento", value: data.applicant.document },

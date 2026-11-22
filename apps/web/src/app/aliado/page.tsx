@@ -71,11 +71,11 @@ export default function AllyHome() {
                   {result.suppressed && (
                     <div className="cs-note cs-note-warn cs-row" role="status" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
                       <ShieldCheck size={18} style={{ flex: "none", marginTop: 1 }} />
-                      <span><strong>El detalle por etapas está oculto para proteger a las personas.</strong> Con menos de {result.minimumGroup} referidos en el periodo, el desglose podría identificar a alguien; por eso solo mostramos el total. {result.note}</span>
+                      <span><strong>El detalle por etapas está oculto para proteger a las personas.</strong> Con menos de {result.minimumGroup} referidos en el periodo, el desglose podría identificar a alguien; por eso solo mostramos el total.</span>
                     </div>
                   )}
                   <Panel title="Embudo de tus referidos" description={result.suppressed ? undefined : result.note}>
-                    <div className="cs-bars">
+                    <div className="cs-bars cs-bars-wide">
                       {result.stages.map((stage, index) => (
                         <div key={stage.key} className="cs-bar" title={stage.count === null ? "Oculto por protección de datos" : referred ? `${percent(stage.count / referred, 0)} de tus referidos` : undefined}>
                           <span>{index + 1}. {stage.label}</span>

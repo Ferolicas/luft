@@ -119,11 +119,12 @@ function ApplicationDetail({ application, canDecide, person, onClose, onDecided 
               ...(application.disbursement ? [{ label: "Desembolso", value: <span><StatusBadge value={application.disbursement.status} text={label(application.disbursement.status, { PENDING: "Pendiente de giro", COMPLETED: "Registrado", CANCELLED: "Cancelado" })} /> {application.disbursement.status === "PENDING" && <Link className="cs-link" href="/admin/credito/desembolsos">Ir a desembolsos</Link>}</span>, wide: true }] : []),
             ]}
           />
-          {secondCredit && <EligibilityPanel applicationId={application.id} allowed={canDecide} />}
+          {secondCredit && pending && <EligibilityPanel applicationId={application.id} allowed={canDecide} />}
+          <PreviousTerms terms={application.previousTerms} />
         </div>
         <div className="cs-stack">
           <h3 style={{ fontSize: ".9rem", fontWeight: 800 }}>Plan de cuotas con las condiciones de la solicitud</h3>
-          <PlanTable principalCOP={Number(application.amountCOP)} termMonths={application.termMonths} monthlyRate={rate} geometricDecrease={decrease} startDate={application.loan?.disbursedAt ? application.loan.disbursedAt.slice(0, 10) : today()} />
+          <PlanTable principalCOP={Number(application.amountCOP)} termMonths={application.termMonths} monthlyRate={rate} geometricDecrease={decrease} startDate={application.loan?.disbursedAt ? application.loan.disbursedAt.slice(0, 10) : today()} estimated={!application.loan?.disbursedAt} />
         </div>
       </div>
       {signature?.documentSnapshot && (
@@ -161,6 +162,28 @@ function ApplicationDetail({ application, canDecide, person, onClose, onDecided 
         </ConfirmDialog>
       )}
     </Modal>
+  );
+}
+
+/** Condiciones cotizadas antes de la versión firmada (solo informativo; la API lo envía cuando existe). */
+function PreviousTerms({ terms }: { terms: Application["previousTerms"] }) {
+  if (!terms || typeof terms !== "object") return null;
+  const value = (key: string) => (terms as Record<string, unknown>)[key];
+  const numeric = (key: string) => (value(key) === null || value(key) === undefined || value(key) === "" || Number.isNaN(Number(value(key))) ? null : Number(value(key)));
+  const items = [
+    numeric("amountCOP") !== null ? { label: "Monto", value: cop(numeric("amountCOP")) } : null,
+    numeric("termMonths") !== null ? { label: "Plazo", value: `${numeric("termMonths")} cuotas` } : null,
+    numeric("monthlyRate") !== null ? { label: "Tasa mensual", value: percent(numeric("monthlyRate")) } : numeric("requestedRateMonthly") !== null ? { label: "Tasa mensual", value: percent(numeric("requestedRateMonthly")) } : null,
+    numeric("geometricDecrease") !== null ? { label: "Gradiente", value: percent(numeric("geometricDecrease")) } : null,
+    numeric("productVersion") !== null ? { label: "Versión del producto", value: `v${numeric("productVersion")}` } : null,
+  ].filter((item): item is { label: string; value: string } => item !== null);
+  if (items.length === 0) return null;
+  return (
+    <div className="cs-fieldset">
+      <strong>Condiciones cotizadas antes</strong>
+      <Facts columns={2} items={items} />
+      <small className="cs-muted cs-small">Solo informativo: las condiciones vigentes de la solicitud son las del pagaré firmado.</small>
+    </div>
   );
 }
 

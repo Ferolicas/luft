@@ -4,7 +4,7 @@ import { cop, day, percent } from "@/lib/admin/format";
 import { annualEffective, geometricPlan, planTotals } from "@/lib/admin/credit-plan";
 
 /** Plan de cuotas calculado con las condiciones dadas (capital, plazo, tasa mensual y gradiente). */
-export function PlanTable({ principalCOP, termMonths, monthlyRate, geometricDecrease, startDate }: { principalCOP: number | null; termMonths: number | null; monthlyRate: number | null; geometricDecrease: number | null; startDate?: string | null }) {
+export function PlanTable({ principalCOP, termMonths, monthlyRate, geometricDecrease, startDate, estimated = true }: { principalCOP: number | null; termMonths: number | null; monthlyRate: number | null; geometricDecrease: number | null; startDate?: string | null; /** `false` cuando `startDate` es la fecha real de desembolso. */ estimated?: boolean }) {
   if (principalCOP === null || termMonths === null || monthlyRate === null || geometricDecrease === null)
     return <p className="cs-note cs-note-warn">Faltan condiciones (monto, plazo, tasa o gradiente) para calcular el plan de cuotas.</p>;
   const rows = geometricPlan(principalCOP, termMonths, monthlyRate, geometricDecrease, startDate);
@@ -50,7 +50,7 @@ export function PlanTable({ principalCOP, termMonths, monthlyRate, geometricDecr
       </div>
       <small className="cs-muted cs-small">
         Tasa {percent(monthlyRate)} mensual vencida ({percent(annualEffective(monthlyRate))} E.A.), gradiente geométrico decreciente del {percent(geometricDecrease)} mensual.
-        {startDate ? " Las fechas se cuentan desde la activación o el desembolso; aquí se estiman desde hoy." : ""}
+        {startDate ? (estimated ? " Las fechas se cuentan desde la activación o el desembolso; aquí se estiman desde hoy." : " Fechas contadas desde el desembolso registrado.") : ""}
       </small>
     </div>
   );
