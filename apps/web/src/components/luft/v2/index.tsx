@@ -48,11 +48,11 @@ export function RouteSummaryCard({ route }: { route: DashboardRoute | null | und
       <div className="top">
         <Ring value={route.progressPercent} label="Avance de tu ruta" />
         <div className="who">
-          <span><span className="l-overline">Categoría</span> · {route.categoryBrand}</span>
-          <strong>{route.archetype?.name ?? "Arquetipo por definir"}</strong>
-          <span>{route.archetype ? "Tu arquetipo hoy" : "Responde dos preguntas para conocerlo"} · Etapa {route.visibleStage.title}</span>
+          <div><span className="l-overline">Categoría</span><strong>{route.categoryBrand}</strong></div>
+          <div><span className="l-overline" style={{ color: "var(--l-violet-600)" }}>Arquetipo</span><strong>{route.archetype?.name ?? "Por definir"}</strong></div>
         </div>
       </div>
+      <span className="l-small" style={{ fontWeight: 500 }}>Etapa {route.visibleStage.title} · {route.progressPercent}% de tu ruta{route.archetype ? "" : " · responde dos preguntas para conocer tu arquetipo"}</span>
       <Steps items={steps} label="Etapas de tu ruta" />
       {next && (
         <Link href={next.href} className="next">

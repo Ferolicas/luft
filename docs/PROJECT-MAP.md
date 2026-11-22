@@ -258,3 +258,44 @@ Provider callback: `POST /webhooks/open-finance` (HMAC `x-openfinance-signature`
 ### Screens expected by the links the API returns
 
 `/app/ruta`, `/app/formalizacion`, `/app/familia`, `/app/finanzas`, `/app/proyectos`, `/app/oportunidades`, `/invitacion/[token]`, plus the existing `/app/puntaje`, `/app/perfil/financiero`, `/app/perfil/financiero/documentos`, `/app/aprender`, `/app/credito`, `/app/pagar`, `/app/historial`, `/app/pqr` and `/app/perfil/cuenta`.
+
+## Frente "web-v2-usuario" — V2 user screens of the PWA (2026-11-23)
+
+New user-facing screens on top of the V2 API. They only add files: no existing page, component or stylesheet was edited. Mounting points in existing files (home, profile hub, desktop sidebar, `DashboardData` type, post-login redirect) are listed at the end of this section as integration work.
+
+### Files
+
+- `apps/web/src/app/luft-v2.css`: every V2-only rule, prefixed `v2-`. It reuses the `--l-*` tokens and the `l-*` kit; strokes use `var(--l-stroke, 1.5px)` and shadows `var(--l-shadow-*)`. Desktop rules live at the bottom inside `min-width: 1024px` / `1200px` media queries. It is imported by `components/luft/v2/kit.tsx` and `components/luft/v2/index.tsx`, so any page that uses the V2 kit loads it.
+- `apps/web/src/lib/v2/types.ts`: API contracts as consumed by the PWA (verified against the running API). `lib/v2/api.ts`: `useResource` (load / reload / replace with honest loading and error states), `useAction`, `send`, `errorCode`, `describeError` (reads `issues[]` of validation errors), `uploadFile` (raw binary body + `X-File-Name`), date/currency formatters and the pending-invitation storage (`luft_pending_invitation`). `lib/v2/labels.ts`: Open Finance connection labels.
+- `apps/web/src/components/luft/v2/`: `kit.tsx` (PageState, Empty, SheetHead, ConfirmSheet, Facts, ListRow, Meter, Ring, Steps, FilePicker, ConsentBox, Fold), `index.tsx` (`RouteSummaryCard`, `PendingInvitation`, `V2_LINKS`, `STAGE_ORDER`), `household.tsx`, `cards.tsx`, `matching.tsx` (sheets and cards of each domain).
+- `e2e/v2-usuario.spec.ts`: API-free checks (responses mocked with `page.route`): invitation states and session requirement of every V2 route.
+
+### Routes
+
+| Route | Screen | API |
+| --- | --- | --- |
+| `/app/ruta` | Category and archetype shown separately, why the archetype was assigned, archetype history, the 5 stages with their items and links, next step, evidence list, category picker (until locked), new route when allowed, route transitions. Answers the classification (2 questions) when there is no archetype yet. | `GET /luft/route`, `/luft/evidence`, `/luft/route/archetypes`, `/luft/categories`; `PUT /luft/route/category`; `POST /luft/routes`; `PUT /luft/classification` |
+| `/app/formalizacion` | Assisted tax formalization driven by `FormalizationView.actions`: explained diagnosis (value, limit, UVT, rule version, disclaimer), "already filed?" question with the `TAX_ASSISTANCE` authorization, declaration and support uploads, guided preparation, submit for review, timeline with the professional's observations, filed / verified states. Extraction and DIAN show their `configuration_required` message. `/app/renta` is untouched. | `GET /luft/formalization`; `POST .../diagnose`, `/answer`, `/submit`, `/documents/:kind`; `PUT .../preparation`; `DELETE .../documents/:id` |
+| `/app/familia` | Without a household: plan picker (seats and price from the API) and household creation with its consent. With a household, three tabs: Hogar (board with authorized metrics only, members and roles, seats, invitations with one-time link and real delivery status), Metas (shared goals, contributions with support file, confirm / reject), Mis permisos (share level per metric, rename, leave / close). | `GET /luft/household`, `/luft/subscription` and every household mutation |
+| `/invitacion/[token]` | Public invitation page inside `AuthFrame`: status, inviter first name, household and role only. Without a session it offers sign-up (token kept in `localStorage`) or an inline login that stays on the page; with a session, per-metric sharing choice and acceptance with the invitation's own consent text. | `GET /luft/invitations/:token`, `POST .../accept`, `GET /auth/me`, `POST /auth/login` |
+| `/app/finanzas` | Hub with three live summaries. | `GET /luft/cards/overview`, `/startif/credits`, `/luft/open-finance` |
+| `/app/finanzas/tarjetas` | Card advisor: register / edit / delete self-declared cards, purchases, limit health (utilization, band, days to statement and payment), purchase simulator by amount and term, contextual recommendations with accept / dismiss, history with effectiveness; the API disclaimer is always visible. | `/luft/cards*` |
+| `/app/finanzas/creditos` | Builder credits: credit 1 with progress and schedule, capital prepayment by PSE (shows the provider's real `configuration_required`), credit 2 with each requirement explained, purpose selector (eligibility preview through `GET /startif/credits?purpose=…`) and application when eligible. | `GET /startif/credits`, `POST /startif/applications`, `POST /startif/payments/pse` |
+| `/app/finanzas/conexiones` | Open Finance: service status, scopes, authorization with the consent text (never asks for bank credentials), connections and revocation. | `/luft/open-finance*` |
+| `/app/proyectos` | Life projects: create / edit / pause / complete / delete, savings plan (required monthly saving vs capacity, gap, suggested date), learn → demonstrate → access → grow cycle, recommended modules, optional new route when `canStartNewRoute`. | `/luft/projects*`, `GET /luft/route` |
+| `/app/oportunidades` | Matching: readiness with links, declared data, run with desired amount and term, results per product (fit %, passed rules, gaps with a link to complete them, exclusions, policy version and date), express authorization per institution showing the preview text and scope, revoke / withdraw, presentation tracking with the institution's decision, run history. No approval promises. | `/matching*` |
+| `/app/oportunidades/datos` | Declared data: birth date, department, city, start of current activity. | `GET|PUT /matching/profile` |
+| `/app/perfil/privacidad` | Consents and habeas data: active and historical, by domain, with purpose, scope and dates; revocation with its effect explained; `DATA_PROCESSING` links to the account. | `GET /luft/consents`, `POST /luft/consents/:id/revoke` |
+
+### Conventions
+
+- Screens that use two columns from 1200px add `v2-wide` to `Screen` and wrap their blocks in `.v2-cols > .v2-main + .v2-side`; below that width they are a single mobile column in source order.
+- Dates of calendar type (`YYYY-MM-DD`) are formatted in UTC; instants in the person's time zone. Installment due dates arrive as midnight-UTC instants and are cut to their date part before formatting.
+- `configuration_required` (503) is never treated as success: the provider's message is shown and nothing is recorded as done.
+
+### Integration points left for existing files
+
+- Home (`app/app/page.tsx`): render `<RouteSummaryCard route={data.route} />` (and optionally `<PendingInvitation />`) from `@/components/luft/v2`.
+- `lib/types.ts`: add `route?: DashboardRoute | null` (type in `@/lib/v2/types`) and `notificationsUnread?: number` to `DashboardData`.
+- Profile hub (`app/app/perfil/page.tsx`) and desktop sidebar (`components/luft/desktop.tsx`): list `V2_LINKS`.
+- `LoginScreen` / `VerifyScreen` (`components/luft/auth.tsx`): after a successful sign-in, go to `/invitacion/<token>` when `pendingInvitation()` returns one.

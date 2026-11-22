@@ -93,7 +93,7 @@
 .v2-steps span { position: relative; width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center; background: #fff; border: 2px solid var(--l-n-300); color: var(--l-n-500); font-size: 12px; font-weight: 500; }
 .v2-steps li.done span { background: var(--l-blue-500); border-color: var(--l-blue-500); color: #fff; }
 .v2-steps li.current span { border-color: var(--l-blue-500); color: var(--l-blue-500); box-shadow: 0 0 0 4px var(--l-blue-50); }
-.v2-steps small { font-size: 11px; line-height: 14px; color: var(--l-n-600); overflow-wrap: anywhere; }
+.v2-steps small { font-size: 11px; line-height: 14px; letter-spacing: -.01em; white-space: nowrap; color: var(--l-n-600); }
 .v2-steps li.current small { color: var(--l-n-900); font-weight: 500; }
 .l-header .v2-steps { margin: 4px 0 18px; }
 .l-header .v2-steps li::before { background: rgba(255, 255, 255, .3); }
@@ -171,9 +171,9 @@
 /* Tarjeta resumen de la ruta para el inicio */
 .v2-route-card { gap: 14px; }
 .v2-route-card .top { display: flex; align-items: center; gap: 14px; }
-.v2-route-card .who { flex: 1; min-width: 0; display: grid; gap: 2px; }
-.v2-route-card .who strong { font-size: 18px; line-height: 23px; font-weight: 700; letter-spacing: -.01em; overflow-wrap: anywhere; }
-.v2-route-card .who span { font-size: 13px; line-height: 17px; color: var(--l-n-600); }
+.v2-route-card .who { flex: 1; min-width: 0; display: grid; gap: 8px; }
+.v2-route-card .who > div { display: grid; gap: 1px; }
+.v2-route-card .who strong { font-size: 17px; line-height: 22px; font-weight: 700; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .v2-route-card .next { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; background: var(--l-blue-50); }
 .v2-route-card .next strong { display: block; font-size: 14px; line-height: 18px; font-weight: 500; color: var(--l-n-900); }
 .v2-route-card .next small { display: block; font-size: 12px; line-height: 16px; color: var(--l-blue-500); font-weight: 500; }
