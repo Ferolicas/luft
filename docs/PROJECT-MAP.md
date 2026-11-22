@@ -101,3 +101,50 @@ Adapters fail closed with `configuration_required` until real credentials and pr
 - Production runs a verified PostgreSQL custom-format backup every day at 03:17 UTC.
 - Backups live outside the application checkout in `/var/backups/luft`, are readable only by root and retain 14 days.
 - Each backup is checked with `pg_restore --list` before its temporary file becomes the final archive.
+
+## Frente "matching" (V2): políticas, matching, portales y analítica
+
+Módulos `apps/api/src/matching` (`MatchingModule`) y `apps/api/src/analytics` (`AnalyticsModule`). Todas las tablas viven en el esquema `scoring` (migración `202611220002_matching_analytics`); `identity` solo gana los roles `ALLY` e `INSTITUTION` (migración `202611220001_partner_roles`). Sin llaves foráneas entre esquemas.
+
+### Modelos (`scoring`)
+
+| Modelo | Propósito |
+| --- | --- |
+| `Institution`, `FinancialProduct` | Entidad financiera y sus productos (montos, plazos, tasa referencial, garantías, documentos, canal, comisión, convenio). |
+| `PolicyVersion`, `PolicyRule`, `PolicyVersionEvent` | Política versionada por producto (`BORRADOR → REVISION → APROBADA → VIGENTE → SUSTITUIDA \| SUSPENDIDA`), sus reglas y su historial. Un índice único parcial impide dos versiones `VIGENTE` por producto. |
+| `MatchingSupplement` | Datos que la persona declara para el matching (nacimiento, ciudad, inicio de actividad), cifrados. |
+| `MatchRun`, `MatchResult` | Ejecución con la instantánea de hechos cifrada + hash, y un resultado por producto con la versión de política, copia de sus reglas, % de encaje, estado y explicación (sin valores de la persona). |
+| `MatchPresentation` | Autorización expresa (texto, hash, IP con hash, agente) y seguimiento `AUTORIZADA → PRESENTADA → APROBADA \| RECHAZADA \| DESISTIDA` (+ `REVOCADA`). La copia de datos autorizados va cifrada. |
+| `Ally`, `InstitutionUser`, `AllyUser`, `AllyReferral` | Aliados, vínculo cuenta↔entidad/aliado y `referredByAllyId`. |
+| `Cohort`, `Outcome`, `BacktestRun` | Cortes congelados de cosechas, resultados reales observados (préstamos y decisiones de entidades) y backtests con parámetros, reglas y resultado. |
+
+### Reglas puras (sin base de datos, con pruebas)
+
+- `matching/fact-catalog.ts`: catálogo de hechos y operadores que la consola usa para armar formularios. Las políticas viven en BD; el código solo declara qué hechos existen.
+- `matching/rule-engine.ts`: hechos + reglas → resultado determinista. Un hecho desconocido nunca cuenta como cumplido (brecha "dato faltante"). `REQUISITO`, `EXCLUSION` (causal de rechazo) y `PREFERENCIA` (peso). Las reglas `internal` se muestran al usuario como "Criterio interno de la entidad".
+- `matching/policy-lifecycle.ts`, `matching/presentation.ts`, `matching/facts.ts`: transiciones, aprobación independiente, alcance de la autorización, visibilidad de la entidad, embudo del aliado y constructor de hechos.
+- `analytics/cohorts.ts`, `analytics/effectiveness.ts`, `analytics/backtest.ts`: cosechas (mora 30/60/90 por mes en libros, pagos a tiempo, prepagos, castigos), puntaje inicial vs. final, lecciones vs. pago, estabilidad del arquetipo y backtesting.
+
+### Endpoints
+
+- Usuario (`USER` y staff; nunca `ALLY`/`INSTITUTION`): `GET /matching`, `GET /matching/readiness`, `GET|PUT /matching/profile`, `POST /matching/run`, `GET /matching/history`, `GET /matching/runs/:id`, `GET /matching/presentations`, `GET /matching/results/:id/authorization`, `POST /matching/results/:id/authorize`, `POST /matching/results/:id/revoke`.
+- Consola (`/admin/matching`, lectura `RISK`/`COMMERCIAL`/`SUPERADMIN`, escritura `RISK`/`SUPERADMIN`): `catalog`, `institutions`, `products`, `products/:id/versions`, `versions/:id` (+ `clone`, `transition`, `history`, `simulate`, `rules`), `rules/:id`, `presentations` (+ `present`, `decision`), `runs` (+ `verify`). Solo `SUPERADMIN`: `allies`, `allies/:id/users`, `allies/:id/referrals`, `institutions/:id/users`, `institution-users/:id`, `ally-users/:id`, `ally-referrals/:id`.
+- Portal de entidad (`INSTITUTION` + vínculo activo): `GET /institution/me`, `GET /institution/presentations`, `GET /institution/presentations/:id`, `POST /institution/presentations/:id/decision`.
+- Portal de aliado (`ALLY` + vínculo activo): `GET /ally/me`, `GET /ally/funnel`.
+- Analítica (`RISK`/`FINANCE`/`SUPERADMIN`): `GET /admin/analytics/cohorts`, `GET|POST /admin/analytics/cohorts/snapshots`, `GET /admin/analytics/effectiveness`, `GET|POST /admin/analytics/backtests`, `GET /admin/analytics/backtests/:id`.
+
+### Flujos
+
+1. Riesgo crea entidad, producto y una versión en borrador con reglas; la envía a revisión; otra persona la aprueba (queda registrado quién y con qué independencia) y se activa. Activar sustituye la versión vigente anterior. Solo un borrador es editable: para cambiar una política se clona.
+2. La persona ejecuta el matching (exige consentimiento de tratamiento vigente, arquetipo y secciones trabajo/ingresos/deudas; si falta algo la respuesta lo lista). Cada resultado guarda la versión y una copia de las reglas, así una versión posterior no altera la historia; `POST /admin/matching/runs/:id/verify` re-ejecuta la instantánea y confirma que el resultado es reproducible.
+3. La persona autoriza presentar sus datos a UNA entidad (solo contacto + hechos que evalúa esa política + resultado). Puede revocar antes de la presentación (se destruye la copia) o desistir después.
+4. Una persona de LUFT marca "presentada" (no hay integración bancaria ni envíos simulados). La entidad, en su portal, ve únicamente los casos presentados a ella con los datos autorizados y registra aprobación/rechazo, monto, tasa, plazo y producto final. El staff también puede registrar la decisión.
+5. Analítica calcula cosechas desde `startif`, efectividad desde `luft` y backtests re-ejecutando reglas sobre las instantáneas de `MatchRun` contra `Outcome`.
+
+### Puntos de extensión e integración pendientes
+
+- **Categoría**: `matching/profile-source.ts` (`PROFILE_SOURCE`) es el único lugar que lee el perfil LUFT. Hoy devuelve `category: null` (las reglas sobre categoría producen "dato faltante") y el arquetipo de `FinancialProfile`. Cuando exista el catálogo de categorías/arquetipos basta con cambiar `LuftProfileSource.signals`/`segments` o enlazar otra clase al token.
+- **Referidos**: el registro no captura código de aliado. `AllyReferral` se alimenta desde `POST /admin/matching/allies/:id/referrals`; la captura automática con `Ally.referralCode` en el registro está pendiente.
+- **Cierre de cuenta**: `MatchingService.eraseUserData(userId)` borra lo que el módulo guarda de la persona (conserva solo lo ya presentado a una entidad). Falta invocarlo desde `AuthService.closeAccount`.
+- **Abonos anticipados de STARTIF**: `AnalyticsService` lee `startif."LoanPrepayment"` de forma tolerante (solo si existe con `loanId` y `amountCOP`); `Loan.productCode`, `defaultedAt` y `writtenOffAt` se usan en cuanto el cliente Prisma los expone.
+- **Instantáneas para backtesting**: solo existen las de ejecuciones de matching; no se captura instantánea al originar un crédito.
