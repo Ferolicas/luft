@@ -110,6 +110,7 @@ describe('formalization case', () => {
       'UPLOAD_DECLARATION',
       'UPLOAD_SUPPORT',
       'SAVE_PREPARATION',
+      'DELETE_DOCUMENT',
     ]);
     // Without the authorization no document can be uploaded or sent to review.
     expect(

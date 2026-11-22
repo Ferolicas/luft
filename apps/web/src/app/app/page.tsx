@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { NotificationBell } from "@/components/luft/notifications";
 import { firstName, initials, useLuft } from "@/components/luft/shell";
 import { Bar, Button, Card, Carousel, Chip, Header, Icon, Lufty, Screen, Sheet, Spark, Staircase, type IconName } from "@/components/luft/ui";
+import { PendingInvitation, RouteSummaryCard } from "@/components/luft/v2";
 import { money } from "@/lib/api";
 import { installmentsLabel, isSettled, nextInstallment, planMilestones, planSteps, statusLabel } from "@/lib/credit";
 import { daysUntil, longDate } from "@/lib/journey";
@@ -48,6 +49,7 @@ export default function HomePage() {
         </div>
       </Header>
       <div className="l-body tabbed" style={{ gap: 28 }}>
+        <div className="l-stack" style={{ gap: 28 }}>
         <Card>
           <div className="l-credit-head">
             <span className="title"><Icon name="account_balance_wallet" />Tu crédito LUFT</span>
@@ -68,6 +70,9 @@ export default function HomePage() {
             <div className="l-row" style={{ gap: 10 }}><Button variant="secondary" href="/app/puntaje">Mi puntaje</Button><Button href="/app/credito">Conocerlo</Button></div>
           </>}
         </Card>
+          <RouteSummaryCard route={data.route} />
+          <PendingInvitation />
+        </div>
 
         <nav className="l-shortcuts" aria-label="Accesos rápidos">
           <Link href={next ? "/app/pagar" : "/app/credito"}><span><Icon name="account_balance_wallet" size={24} /></span>{next ? "Pagar" : "Crédito"}</Link>

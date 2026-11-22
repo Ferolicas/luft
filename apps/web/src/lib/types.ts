@@ -1,4 +1,5 @@
 import type { SessionUser } from "@/components/app-shell";
+import type { DashboardRoute } from "@/lib/v2/types";
 
 export interface DashboardData {
   user: SessionUser;
@@ -10,6 +11,8 @@ export interface DashboardData {
   /** The loan with unpaid installments when there is one; otherwise the most recent application. */
   credit: CreditData | null;
   openPqr: number;
+  /** Ruta activa: categoría, arquetipo, etapa visible, avance y siguiente paso. */
+  route?: DashboardRoute | null;
   /** Unread notifications (see `GET /luft/notifications`). */
   notificationsUnread: number;
   integrations: Record<string, boolean>;

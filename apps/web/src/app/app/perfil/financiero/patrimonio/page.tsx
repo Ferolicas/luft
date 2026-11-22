@@ -101,7 +101,7 @@ export default function WealthPage() {
         <p className="l-muted">Según los datos que registraste, superas {COUNT[exceeded.length] ?? exceeded.length} de los topes de referencia del año gravable {check.taxYear}:</p>
         <div className="l-tax boxed">{exceeded.map((row) => <TaxRow key={row.key} row={row} />)}</div>
         <p className="l-note"><Icon name="info" size={16} /><span>Esto no es una determinación tributaria: depende de toda tu situación y de las normas de la DIAN. Los topes cambian cada año con la UVT.</span></p>
-        <Button arrow disabled={leaving} onClick={() => void leave("/app/renta")}>Hacer mi declaración con LUFT</Button>
+        <Button arrow disabled={leaving} onClick={() => void leave("/app/formalizacion")}>Hacer mi declaración con LUFT</Button>
         <Button variant="secondary" disabled={leaving} onClick={() => void leave(TAX_RETURN_UPLOAD)}>Ya la tengo, continuar con mi perfil financiero</Button>
       </Sheet>}
     </Screen>

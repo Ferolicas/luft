@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon, Lufty, type IconName } from "./ui";
+import { V2_LINKS } from "./v2";
 
 /*
  * Piezas que solo existen en la variante de escritorio (≥1024px).
@@ -21,9 +22,10 @@ const SHORTCUTS: NavItem[] = [
   { href: "/app/credito", label: "Mi crédito", icon: "account_balance_wallet" },
   { href: "/app/historial", label: "Historial de pagos", icon: "task" },
   { href: "/app/puntaje", label: "Mi puntaje", icon: "trending_up" },
-  { href: "/app/renta", label: "Declaración de renta", icon: "receipt_long" },
   { href: "/app/pqr", label: "Ayuda y PQR", icon: "help" },
 ];
+
+const ROUTE: NavItem[] = V2_LINKS.filter((link) => link.href !== "/app/perfil/privacidad").map(({ href, label, icon }) => ({ href, label, icon }));
 
 function Wordmark({ href }: { href: string }) {
   return <Link href={href} className="l-d-brand" aria-label="LUFT, ir al inicio"><Lufty mood="happy" tone="white" width={56} /><span>LUFT</span></Link>;
@@ -45,6 +47,7 @@ export function DesktopNav({ name, initials, username, openPqr, onLogout }: { na
     <aside className="l-sidenav" aria-label="Navegación de escritorio">
       <Wordmark href="/app" />
       <nav aria-label="Navegación principal">{MAIN.map(item)}</nav>
+      <nav aria-label="Mi ruta LUFT"><span className="l-d-label">Mi ruta</span>{ROUTE.map(item)}</nav>
       <nav aria-label="Accesos rápidos"><span className="l-d-label">Accesos</span>{SHORTCUTS.map(item)}</nav>
       <div className="l-d-user">
         <Link href="/app/perfil" className="l-d-me"><span className="l-avatar">{initials}</span><span><strong>{name}</strong><small>@{username}</small></span></Link>

@@ -6,7 +6,12 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { rememberBureauConsent, syncAfterSignup } from "@/lib/journey";
+import { pendingInvitation } from "@/lib/v2/api";
 import { Alert, Button, Card, Checkbox, ColombiaFlag, Field, Header, Icon, Luft, Screen, Tip } from "./ui";
+
+interface Session { user?: { role?: string } }
+/** Cada tipo de cuenta entra a su propio espacio. */
+const homeForRole = (role: string) => (role === "INSTITUTION" ? "/entidad" : role === "ALLY" ? "/aliado" : role === "USER" ? "/app" : "/admin");
 
 type Passkey = Parameters<typeof startAuthentication>[0]["optionsJSON"];
 
@@ -17,17 +22,17 @@ export function LoginScreen() {
   const [show, setShow] = useState(false);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  async function run(action: () => Promise<void>) {
+  async function run(action: () => Promise<string>) {
     setBusy(true); setError("");
-    try { await action(); router.push("/app"); router.refresh(); } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+    try { const role = await action(); const invitation = pendingInvitation(); router.push(invitation && role === "USER" ? `/invitacion/${encodeURIComponent(invitation)}` : homeForRole(role)); router.refresh(); } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   }
-  const submit = (event: FormEvent) => { event.preventDefault(); void run(async () => { await api("/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) }); }); };
+  const submit = (event: FormEvent) => { event.preventDefault(); void run(async () => (await api<Session>("/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) })).user?.role ?? "USER"); };
   const passkey = () => {
     if (!identifier) return setError("Escribe primero tu usuario o correo.");
     void run(async () => {
       const first = await api<{ challengeId: string; options: Passkey }>("/auth/passkeys/authentication-options", { method: "POST", body: JSON.stringify({ identifier }) });
       const response = await startAuthentication({ optionsJSON: first.options });
-      await api("/auth/passkeys/authentication-verification", { method: "POST", body: JSON.stringify({ challengeId: first.challengeId, response }) });
+      return (await api<Session>("/auth/passkeys/authentication-verification", { method: "POST", body: JSON.stringify({ challengeId: first.challengeId, response }) })).user?.role ?? "USER";
     });
   };
   return (
@@ -172,7 +177,8 @@ export function VerifyScreen() {
       await api("/auth/verify-phone", { method: "POST", body: JSON.stringify({ challengeId, code }) });
       sessionStorage.removeItem("luft_verification");
       await syncAfterSignup();
-      router.push("/app/puntaje");
+      const invitation = pendingInvitation();
+      router.push(invitation ? `/invitacion/${encodeURIComponent(invitation)}` : "/app/puntaje");
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   }
   return (

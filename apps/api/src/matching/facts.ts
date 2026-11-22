@@ -314,7 +314,7 @@ export function matchingRequirements(input: {
       code: 'ARCHETYPE',
       kind: 'PROFILE',
       label: 'Completa tu diagnóstico inicial para conocer tu perfil.',
-      href: '/app',
+      href: '/app/ruta',
     });
   const sections: Array<[string, string, string]> = [
     [

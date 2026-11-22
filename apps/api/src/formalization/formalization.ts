@@ -156,7 +156,16 @@ export function userActions(facts: CaseFacts): UserAction[] {
     if (facts.hasConsent) actions.push('UPLOAD_DECLARATION', 'UPLOAD_SUPPORT');
     actions.push('SAVE_PREPARATION');
   }
-  if (['DOCUMENTO_CARGADO', 'PREPARACION_GUIADA'].includes(status))
+  // The service allows removing a document in every editable state, so a
+  // supporting file uploaded before the declaration can be withdrawn too.
+  if (
+    [
+      'NO_REQUIERE',
+      'POSIBLE_OBLIGACION',
+      'DOCUMENTO_CARGADO',
+      'PREPARACION_GUIADA',
+    ].includes(status)
+  )
     actions.push('DELETE_DOCUMENT');
   if (
     facts.hasConsent &&

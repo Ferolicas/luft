@@ -369,7 +369,7 @@ export class StartifService {
           : {}),
       },
     });
-    return this.serialize(application);
+    return this.publicView(application);
   }
 
   async startKyc(user: AuthenticatedUser, applicationId: string) {
@@ -701,7 +701,7 @@ export class StartifService {
       throw new BadRequestException({
         code: 'prepayment_exceeds_balance',
         message: 'El abono no puede superar tu saldo de capital.',
-        maxCOP: balance.toString(),
+        maxCOP: Number(balance),
       });
     const reusable = await this.db.startif.payment.findFirst({
       where: {
@@ -1333,7 +1333,7 @@ export class StartifService {
       include: CREDIT_INCLUDE,
     });
     if (!application) return null;
-    return this.serialize(application);
+    return this.publicView(application);
   }
 
   /**
@@ -1363,7 +1363,7 @@ export class StartifService {
       }),
     ]);
     return {
-      credits: applications.map((item) => this.serialize(item)),
+      credits: applications.map((item) => this.publicView(item)),
       second: { ...second, purposes: CREDIT_PURPOSES },
     };
   }
@@ -1601,7 +1601,7 @@ export class StartifService {
         where: { id: applicationId },
         include: CREDIT_INCLUDE,
       });
-    return { ...this.serialize(application), reused: true };
+    return { ...this.publicView(application), reused: true };
   }
 
   private async ownedApplication(userId: string, applicationId: string) {
@@ -1614,6 +1614,52 @@ export class StartifService {
   }
 
   /** Convierte montos BigInt a texto y agrega la etapa del crédito. */
+  /**
+   * What the person sees of their own credit: the serialized application
+   * without internal identifiers, staff authorship or the analyst's notes.
+   */
+  publicView(application: any) {
+    const strip = <T extends Record<string, unknown>>(
+      row: T,
+      keys: readonly string[],
+    ) =>
+      Object.fromEntries(
+        Object.entries(row).filter(([key]) => !keys.includes(key)),
+      );
+    const view = this.serialize(application);
+    return {
+      ...strip(view, [
+        'userId',
+        'usuryRateId',
+        'usuryRate',
+        'productId',
+        'previousTerms',
+        'decisionReason',
+      ]),
+      disbursement: view.disbursement
+        ? strip(view.disbursement, [
+            'userId',
+            'createdBy',
+            'registeredBy',
+            'note',
+          ])
+        : null,
+      loan: view.loan
+        ? {
+            ...strip(view.loan, [
+              'userId',
+              'productId',
+              'writtenOffBy',
+              'writtenOffReason',
+            ]),
+            virtualCard: view.loan.virtualCard
+              ? strip(view.loan.virtualCard, ['userId'])
+              : null,
+          }
+        : null,
+    };
+  }
+
   serialize(application: any) {
     const { product, ...rest } = application;
     const signatures: Array<{ status: string }> | undefined = rest.signatures;

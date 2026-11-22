@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { initials, useLuft } from "@/components/luft/shell";
 import { Button, Card, Header, Icon, Screen, Segments, type IconName } from "@/components/luft/ui";
+import { V2_LINKS } from "@/components/luft/v2";
 import { api } from "@/lib/api";
 
 const STAFF = ["COMMERCIAL", "LEGAL", "SUPPORT", "COLLECTIONS", "RISK", "FINANCE", "SUPERADMIN"];
@@ -31,7 +32,7 @@ export default function ProfilePage() {
         </Card>
         <div className="l-section-title"><h2 style={{ fontSize: 16 }}>Trámites</h2></div>
         <Card className="flush"><div className="l-list">
-          <Row href="/app/renta" icon="receipt_long" title="Declaración de renta" text="Revisa si debes declarar y prepárate" />
+          {V2_LINKS.map((link) => <Row key={link.href} href={link.href} icon={link.icon} title={link.label} text={link.text} />)}
           <Row href="/app/puntaje" icon="speed" title="Mi puntaje" text="Tu punto de partida y su evolución" />
           <Row href="/app/credito" icon="account_balance_wallet" title="Mi crédito" text="Solicitud, plan y estado" />
         </div></Card>
