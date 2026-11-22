@@ -83,7 +83,7 @@
 /* Pasos horizontales */
 .v2-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; text-align: center; }
 .v2-steps li { position: relative; display: grid; justify-items: center; gap: 6px; min-width: 0; }
-.v2-steps li::before { content: ""; position: absolute; top: 13px; right: 50%; width: 100%; height: 2px; background: var(--l-n-200); }
+.v2-steps li::before { content: ""; position: absolute; top: 13px; right: calc(50% + 18px); width: calc(100% - 36px); height: 2px; border-radius: 2px; background: var(--l-n-200); }
 .v2-steps li:first-child::before { display: none; }
 .v2-steps li.done::before, .v2-steps li.current::before { background: var(--l-blue-400); }
 .v2-steps span { position: relative; width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center; background: #fff; border: 2px solid var(--l-n-300); color: var(--l-n-500); font-size: 12px; font-weight: 500; }
