@@ -18,8 +18,8 @@ export default function FinancialProfilePage() {
   const dismiss = () => { try { localStorage.setItem(DONE_KEY, "1"); } catch { /* sin almacenamiento */ } setCelebrate(false); };
   if (celebrate) return (
     <Celebration mood="wink" badge="Insignia desbloqueada: Perfil completo" title={`¡Perfil listo, ${firstName(user.fullName)}!`} text="Ya conocemos mejor tu realidad financiera. Mantén tus datos al día para que sigan hablando bien de ti."
-      stats={[{ label: "Total XP", value: data.progress.xp, icon: "diamond_fill" }, { label: "Nivel", value: data.progress.level, icon: "verified_user_fill" }, { label: "Perfil", value: "4/4", icon: "task" }]}
-      barLabel={`Nivel ${data.progress.level} → Nivel ${data.progress.level + 1}`} barText={`${data.progress.xp} / ${data.progress.nextLevelXp} XP`} barValue={((data.progress.xp - data.progress.floorXp) / (data.progress.nextLevelXp - data.progress.floorXp)) * 100}>
+      stats={[{ label: "Perfil", value: `${completed}/4`, icon: "task" }, { label: "Documentos", value: `${new Set(documents.map((item) => item.kind)).size}/4`, icon: "description" }, { label: "Insignias", value: data.progress.badgesEarned, icon: "workspace_premium_fill" }]}
+      barLabel="Tu perfil financiero" barText={`${percent}% completo`} barValue={percent}>
       <Button variant="white" arrow href="/app/perfil" onClick={dismiss}>Volver a mi perfil</Button>
     </Celebration>
   );

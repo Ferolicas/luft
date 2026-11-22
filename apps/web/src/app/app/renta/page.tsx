@@ -56,7 +56,7 @@ export default function TaxReturnPage() {
       <div className="l-body">
         <Card>
           <Tip icon="task">La DIAN pide los valores de todo el año. Revisa que tus respuestas sigan siendo así.</Tip>
-          {GROUPS.map((group) => <div className="l-stack" key={group.key}><strong style={{ fontSize: 14, fontWeight: 500 }}>{group.title}</strong><div className="l-choice-grid">{group.options.map(([value, label]) => <Choice key={value} multiple selected={answers[group.key].includes(value)} onSelect={() => toggle(group.key, value)}>{label}</Choice>)}</div></div>)}
+          {GROUPS.map((group) => <div className="l-stack" key={group.key} style={{ gap: 4 }}><strong id={`tax-${group.key}`} style={{ fontSize: 14, fontWeight: 500 }}>{group.title}</strong><div className="l-choice-grid" role="group" aria-labelledby={`tax-${group.key}`}>{group.options.map(([value, label]) => <Choice key={value} multiple selected={answers[group.key].includes(value)} onSelect={() => toggle(group.key, value)}>{label}</Choice>)}</div></div>)}
         </Card>
         {failure && <Alert>{failure}</Alert>}
       </div>

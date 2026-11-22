@@ -37,10 +37,14 @@ export default function HabitsPage() {
           <strong style={{ fontSize: 14, fontWeight: 500, color: "var(--l-n-600)" }}>¿Pagas arriendo?</strong>
           <Segmented label="¿Pagas arriendo?" value={rent} onChange={setRent} options={[{ value: "yes", label: "Sí" }, { value: "no", label: "No" }]} />
           {rent === "yes" && <label className="l-field"><span>Valor mensual del arriendo</span><MoneyInput label="Valor mensual del arriendo" value={amount} onChange={setAmount} /></label>}
-          <strong style={{ fontSize: 14, fontWeight: 500, color: "var(--l-n-600)" }}>¿Cómo cotizas a seguridad social?</strong>
-          <div className="l-choice-grid" role="radiogroup">{SECURITY.map(([value, label]) => <Choice key={value} selected={security === value} onSelect={() => setSecurity(value)}>{label}</Choice>)}</div>
-          <strong style={{ fontSize: 14, fontWeight: 500, color: "var(--l-n-600)" }}>Otros pagos que haces cada mes</strong>
-          <div className="l-choice-grid">{OTHERS.map(([value, label]) => <Choice key={value} multiple selected={others.includes(value)} onSelect={() => setOthers(others.includes(value) ? others.filter((item) => item !== value) : [...others, value])}>{label}</Choice>)}</div>
+          <div className="l-stack" style={{ gap: 4 }}>
+            <strong id="habits-security" style={{ fontSize: 14, fontWeight: 500, color: "var(--l-n-600)" }}>¿Cómo cotizas a seguridad social?</strong>
+            <div className="l-choice-grid" role="radiogroup" aria-labelledby="habits-security">{SECURITY.map(([value, label]) => <Choice key={value} selected={security === value} onSelect={() => setSecurity(value)}>{label}</Choice>)}</div>
+          </div>
+          <div className="l-stack" style={{ gap: 4 }}>
+            <strong id="habits-others" style={{ fontSize: 14, fontWeight: 500, color: "var(--l-n-600)" }}>Otros pagos que haces cada mes</strong>
+            <div className="l-choice-grid" role="group" aria-labelledby="habits-others">{OTHERS.map(([value, label]) => <Choice key={value} multiple selected={others.includes(value)} onSelect={() => setOthers(others.includes(value) ? others.filter((item) => item !== value) : [...others, value])}>{label}</Choice>)}</div>
+          </div>
         </Card>
         {(error || failure) && <Alert>{error || failure}</Alert>}
         <div className="l-footer" style={{ margin: "auto -16px -24px" }}><Button type="submit" arrow disabled={busy}>{busy ? "Guardando…" : "Guardar sección"}</Button></div>

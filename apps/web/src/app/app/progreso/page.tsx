@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useLuft } from "@/components/luft/shell";
-import { Bar, Card, Chip, Header, Icon, Lufty, Screen, Tip } from "@/components/luft/ui";
-import { isSettled, nextInstallment } from "@/lib/credit";
+import { Bar, Card, Chip, Header, Icon, Lufty, Screen, Staircase, Tip } from "@/components/luft/ui";
+import { installmentsLabel, isSettled, nextInstallment, planSteps } from "@/lib/credit";
 
 const MEDAL = { blue: "blue", green: "green", gold: "gold", violet: "violet" } as const;
 
@@ -34,8 +34,8 @@ export default function ProgressPage() {
             <Bar value={percent} tone="violet" label="Experiencia del nivel" />
             <span className="l-small">{progress.toNext} XP para el Nivel {progress.level + 1}</span>
             {installments.length > 0 ? <>
-              <div className="l-ladder" aria-hidden="true">{installments.map((row, index) => <i key={row.id} className={isSettled(row) ? "paid" : row.id === next?.id ? "current" : index === installments.length - 1 ? "goal" : ""} style={{ height: `${28 + (index / Math.max(1, installments.length - 1)) * 72}%` }} />)}</div>
-              <span className="l-small" style={{ fontWeight: 500 }}>{progress.installmentsPaid} de {progress.installmentsTotal} cuotas pagadas</span>
+              <Staircase steps={planSteps(installments.length, installments.filter(isSettled).length, next?.sequence ?? null)} label={`${progress.installmentsPaid} de ${installmentsLabel(progress.installmentsTotal)} pagadas`} />
+              <span className="l-small" style={{ fontWeight: 500 }}>{progress.installmentsPaid} de {installmentsLabel(progress.installmentsTotal)} pagadas</span>
             </> : <span className="l-small">Cuando actives tu crédito verás aquí tu escalera de cuotas.</span>}
           </Card>
         </section>
@@ -46,7 +46,7 @@ export default function ProgressPage() {
             <Link href={mission.href} key={mission.key}>
               <span className={`l-icon-box ${mission.done ? "green" : ""}`}><Icon name={mission.done ? "check_circle" : mission.key === "lesson" ? "eco" : mission.key === "profile" ? "person" : "account_balance_wallet"} /></span>
               <span className="l-grow"><strong>{mission.title}</strong><small>{mission.done ? "Lista" : mission.detail ?? "Pendiente"}</small></span>
-              <Chip tone="violet" large icon="diamond_fill">+{mission.xp}</Chip>
+              {mission.xp > 0 ? <Chip tone="violet" large icon="diamond_fill">+{mission.xp}</Chip> : <Icon name="chevron_right" />}
             </Link>
           ))}</div></Card>
         </section>
@@ -57,7 +57,7 @@ export default function ProgressPage() {
             // eslint-disable-next-line @next/next/no-img-element
             <div key={badge.key} className={badge.earned ? "" : "locked"}><img src={`/luft/medal-${badge.earned ? MEDAL[badge.tone] : badge.progress ? "progress" : "locked"}.svg`} alt={badge.earned ? "Insignia obtenida" : "Insignia bloqueada"} /><strong>{badge.title}</strong><small style={badge.progress ? { color: "var(--l-amber-500)" } : undefined}>{badge.progress ?? badge.hint}</small></div>
           ))}</div></Card>
-          <Tip>Ganas XP pagando a tiempo, tomando lecciones y completando tu perfil financiero.</Tip>
+          <Tip>La XP se gana con las lecciones y los módulos de Aprender. Pagar a tiempo y completar tu perfil financiero suman insignias y progreso.</Tip>
         </section>
       </div>
     </Screen>

@@ -52,7 +52,8 @@
   .l-shell .l-body.tabbed { padding-bottom: 48px; }
   .l-shell .l-plain-top, .l-shell .l-quiz-top { padding: 0 28px; }
   .l-shell .l-quiz-top { margin-bottom: 24px; }
-  .l-shell .l-footer { padding: 16px 28px 24px; background: linear-gradient(180deg, rgba(241, 244, 249, 0) 0, var(--l-n-100) 22%); }
+  .l-shell .l-footer { padding: 16px 28px 24px; background: var(--l-n-100); }
+  .l-shell .l-footer::before { background: linear-gradient(180deg, rgba(241, 244, 249, 0), var(--l-n-100)); }
   .l-shell .l-footer > :is(.l-btn, .l-row) { width: 100%; max-width: 440px; justify-self: center; }
   .l-shell .l-footer small .l-icon { display: inline-block; vertical-align: -2px; }
   .l-shell .l-toast { left: calc(50% + var(--d-side) / 2); top: 24px; }
@@ -106,7 +107,9 @@
   .l-auth .l-header .l-track i { background: var(--l-blue-500); }
   .l-auth .l-header .l-step, .l-auth .l-header .l-top-title { color: var(--l-n-600); }
   .l-auth .l-plain-top { padding: 0 16px; }
-  .l-auth .l-onboard img.art { width: min(340px, 78%); }
+  .l-auth .l-onboard .art { width: min(340px, 78%); }
+  /* Los saltos de línea forzados del título son del diseño móvil (encabezado centrado). */
+  .l-auth .l-header br.l-br-m { display: none; }
   .l-auth .l-onboard h1 { font-size: 28px; line-height: 36px; }
   .l-auth .l-footer { padding-bottom: 32px; }
 }
@@ -124,9 +127,11 @@
   .l-shell .d-home .l-body > :nth-child(3) { grid-column: 8 / span 5; grid-row: 1 / span 2; }
   .l-shell .d-home .l-body > :nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
   .l-shell .d-home .l-big-number { font-size: 44px; line-height: 52px; }
-  .l-shell .d-home .l-ladder { height: 132px; }
+  .l-shell .d-home .l-stairs { height: 120px; }
   .l-shell .d-home .l-carousel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 0; padding: 0; overflow: visible; }
   .l-shell .d-home .l-tipcard { width: auto; }
+  /* Las tres tarjetas se ven a la vez: el indicador de posición sobra. */
+  .l-shell .d-home .l-carousel-wrap .l-dots { display: none; }
   .l-shell .d-home .l-section-title .l-small { display: none; }
 
   /* Progreso: resumen a lo ancho, nivel y misiones en paralelo, logros a lo ancho */
@@ -134,7 +139,7 @@
   .l-shell .d-progress .l-body > :nth-child(1), .l-shell .d-progress .l-body > :nth-child(4) { grid-column: 1 / -1; }
   .l-shell .d-progress .l-stats > div { padding: 8px; }
   .l-shell .d-progress .l-stats strong { font-size: 24px; }
-  .l-shell .d-progress .l-ladder { height: 132px; }
+  .l-shell .d-progress .l-stairs { height: 120px; }
 
   /* Aprender: racha y lección en curso en paralelo, módulos en dos columnas */
   .l-shell .l-screen.d-learn .l-body { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
@@ -156,7 +161,7 @@
 /* Con ancho de sobra, los accesos rápidos de Inicio pasan a fichas horizontales */
 @media (min-width: 1400px) {
   .l-shell .d-home .l-shortcuts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-  .l-shell .d-home .l-shortcuts a { grid-auto-flow: column; justify-content: start; align-items: center; justify-items: start; gap: 12px; padding: 12px; border-radius: 20px; background: #fff; box-shadow: var(--l-shadow-card); font-size: 14px; text-align: left; white-space: nowrap; }
+  .l-shell .d-home .l-shortcuts a { grid-auto-flow: column; justify-content: start; align-items: center; justify-items: start; gap: 12px; padding: 12px; border-radius: 20px; background: #fff; box-shadow: var(--l-shadow-soft); font-size: 14px; text-align: left; white-space: nowrap; }
   .l-shell .d-home .l-shortcuts span { width: 44px; height: 44px; border-radius: 14px; background: var(--l-blue-50); box-shadow: none; }
 }
 
@@ -170,7 +175,9 @@
   .l-sidenav nav a:not([aria-current="page"]):hover, .l-sidenav .l-d-me:hover, .l-sidenav .l-d-user button:hover { background: rgba(255, 255, 255, .14); }
   .l-shell .l-list > :is(a, button):hover { background: var(--l-n-50); }
   .l-shell .l-module:not(.locked):not(.current):hover, :is(.l-shell, .l-auth) .l-option:not([aria-checked="true"]):not(:disabled):hover { border-color: var(--l-blue-200); }
-  .l-shell .d-home .l-shortcuts a:hover span { box-shadow: var(--l-shadow-card), 0 0 0 2px var(--l-blue-200); }
+  .l-shell .d-home .l-shortcuts a:hover span { box-shadow: var(--l-shadow-soft), 0 0 0 2px var(--l-blue-200); }
+  .l-shell a.l-card:hover { box-shadow: var(--l-shadow-card), 0 0 0 2px var(--l-blue-200); }
+  .l-shell .l-bell:hover { box-shadow: var(--l-shadow-raised), 0 0 0 2px var(--l-blue-200); }
   :is(.l-shell, .l-auth) .l-btn.secondary:not(:disabled):hover { border-color: var(--l-blue-200); }
   :is(.l-shell, .l-auth) .l-round:hover { filter: brightness(1.08); }
   :is(.l-shell, .l-auth) .l-link:hover, :is(.l-shell, .l-auth) .l-link-button:hover, .l-shell .l-section-title a:hover { text-decoration: underline; }

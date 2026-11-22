@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { firstName, useLuft } from "@/components/luft/shell";
-import { Alert, BackButton, Button, Card, Celebration, Chip, Header, Icon, Lufty, OptionCard, Screen, Segments, Tip } from "@/components/luft/ui";
+import { Alert, BackButton, Button, Celebration, Chip, Header, Icon, Lufty, OptionCard, Screen, Segments, Sheet, Tip } from "@/components/luft/ui";
 import { api, errorMessage } from "@/lib/api";
-import { LESSON_XP, lessonContent } from "@/lib/lessons";
+import { lessonContent, lessonXp } from "@/lib/lessons";
 
 type Phase = "story" | "ready" | "quiz" | "done";
 
@@ -36,6 +37,7 @@ function LessonFlow() {
 
   if (!learningModule || !lesson) return <Screen><Header back="/app/aprender" title="Lección no encontrada" /><div className="l-body"><Tip lufty>No encontramos esta lección.</Tip></div></Screen>;
   const quiz = content?.quiz ?? [];
+  const xp = lessonXp(data.progress);
 
   async function finish(hits: number) {
     setBusy(true); setFailure("");
@@ -45,7 +47,7 @@ function LessonFlow() {
     } catch (cause) { setFailure(errorMessage(cause)); } finally { setBusy(false); }
   }
 
-  if (phase === "story") {
+  if (phase === "story" || phase === "ready") {
     const slides = content?.slides ?? [{ title: lesson.title, text: learningModule.description }];
     const current = slides[slide]; const last = slide === slides.length - 1;
     return (
@@ -56,20 +58,18 @@ function LessonFlow() {
           <div className="meta"><span className="l-avatar" style={{ background: "#fff" }}><Lufty mood="neutral" width={30} /></span><span><strong>LUFT</strong>Lección {lessonIndex + 1} de {learningModule.lessons.length} · {lesson.title}</span></div>
           <div className="controls">{slide > 0 && <Button variant="secondary" onClick={() => setSlide(slide - 1)}>Atrás</Button>}<Button variant="white" arrow onClick={() => (last ? setPhase(quiz.length ? "ready" : "quiz") : setSlide(slide + 1))}>{last ? "Terminar" : "Siguiente"}</Button></div>
         </div>
+        {phase === "ready" && (
+          <Sheet title="Lección vista" onClose={() => setPhase("story")}>
+            <div className="l-ready-head"><span className="mark"><Icon name="check_circle" size={30} /></span><div><h2>¡Lección vista!</h2><p>Ahora demuestra lo que aprendiste.</p></div></div>
+            <div className="l-learned"><span className="l-overline">Lo que aprendiste</span><ul className="l-checks">{content!.learned.map((item) => <li key={item}><Icon name="check_circle" />{item}</li>)}</ul></div>
+            <div className="l-row between"><span className="l-muted">{quiz.length} pregunta{quiz.length === 1 ? "" : "s"} para ganar</span><Chip tone="violet" large icon="diamond_fill">+{xp}</Chip></div>
+            <Button arrow onClick={() => setPhase("quiz")}>Empezar quiz</Button>
+            <button type="button" className="l-link-button" onClick={() => { setSlide(0); setPhase("story"); }}>Ver la lección de nuevo</button>
+          </Sheet>
+        )}
       </Screen>
     );
   }
-
-  if (phase === "ready") return (
-    <Screen>
-      <div className="l-body" style={{ paddingTop: 56 }}>
-        <div className="l-row"><span className="l-icon-box green" style={{ width: 56, height: 56, borderRadius: 999 }}><Icon name="check_circle" size={28} /></span><div><h1 style={{ fontSize: 24, fontWeight: 700 }}>¡Lección vista!</h1><span className="l-muted">Ahora demuestra lo que aprendiste.</span></div></div>
-        <Card className="tight" as="div"><span className="l-overline" style={{ color: "var(--l-n-600)" }}>Lo que aprendiste</span><ul className="l-checks">{content!.learned.map((item) => <li key={item}><Icon name="check_circle" />{item}</li>)}</ul></Card>
-        <div className="l-row between"><span className="l-muted">{quiz.length} pregunta{quiz.length === 1 ? "" : "s"} para ganar</span><span className="l-row" style={{ gap: 8 }}><Chip tone="violet" large icon="diamond_fill">+{LESSON_XP}</Chip><Chip tone="amber" large icon="local_fire_department_fill">+1</Chip></span></div>
-      </div>
-      <div className="l-footer"><Button arrow onClick={() => setPhase("quiz")}>Empezar quiz</Button><button className="l-link-button" onClick={() => { setSlide(0); setPhase("story"); }}>Ver la lección de nuevo</button></div>
-    </Screen>
-  );
 
   if (phase === "quiz") {
     if (!quiz.length) return (
@@ -105,11 +105,12 @@ function LessonFlow() {
   const nextLesson = fresh.lessons[lessonIndex + 1];
   return (
     <Celebration badge={fresh.completedLessons >= fresh.lessons.length ? "Módulo completado" : "Lección completada"} title="¡Lección completada!" text={quiz.length ? `Respondiste ${correct} de ${quiz.length} bien${streak ? ` y tu racha va en ${streak} día${streak === 1 ? "" : "s"}` : ""}. ¡Vas con toda!` : "Sumaste un paso más a tu racha."}
-      stats={[{ label: "Total XP", value: `+${LESSON_XP}`, icon: "diamond_fill" }, { label: "Nivel", value: data.progress.level, icon: "verified_user_fill" }, { label: "Aciertos", value: quiz.length ? `${correct}/${quiz.length}` : "—", icon: "check_circle" }]}
+      stats={[{ label: "Total XP", value: `+${xp}`, icon: "diamond_fill" }, { label: "Nivel", value: data.progress.level, icon: "verified_user_fill" }, { label: "Aciertos", value: quiz.length ? `${correct}/${quiz.length}` : "—", icon: "check_circle" }]}
       barLabel={fresh.title} barText={`${fresh.completedLessons} / ${fresh.lessons.length} lecciones`} barValue={(fresh.completedLessons / fresh.lessons.length) * 100}
-      mission={nextLesson ? { label: "Siguiente lección", text: nextLesson.title, icon: "trending_up" } : undefined}>
+      next={nextLesson ? { label: "Siguiente lección", text: nextLesson.title, icon: "trending_up" } : undefined}>
+      {/* Un solo botón: la segunda acción es un enlace de texto. */}
       {nextLesson ? <Button variant="white" arrow onClick={() => { router.push(`/app/aprender/${slug}/${nextLesson.key}`); }}>Siguiente lección</Button> : <Button variant="white" arrow href="/app/aprender">Volver a Aprender</Button>}
-      <Button variant="secondary" href={back}>Volver al módulo</Button>
+      <Link className="l-link-button" href={back}>Volver al módulo</Link>
     </Celebration>
   );
 }

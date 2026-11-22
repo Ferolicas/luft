@@ -110,3 +110,15 @@ export const LESSONS: Record<string, LessonContent> = {
 
 export const lessonContent = (key: string): LessonContent | null => LESSONS[key] ?? null;
 export const LESSON_XP = 20;
+/** Bonus for finishing every lesson of a module. */
+export const MODULE_XP = 30;
+/** XP of one lesson: the value the API reports for the learning mission, or the launch default. */
+export const lessonXp = (progress: { missions: Array<{ key: string; xp: number }> }) => progress.missions.find((mission) => mission.key === "lesson")?.xp || LESSON_XP;
+
+/** Tema y nivel de cada módulo publicado, por slug (acompaña al contenido de las lecciones). */
+const MODULES: Record<string, { topic: string; level: string }> = {
+  "conoce-tu-historial": { topic: "Historial", level: "Nivel básico" },
+  "habitos-que-suman": { topic: "Hábitos", level: "Nivel básico" },
+  "tu-primer-credito": { topic: "Crédito", level: "Nivel intermedio" },
+};
+export const moduleMeta = (slug: string) => MODULES[slug] ?? null;

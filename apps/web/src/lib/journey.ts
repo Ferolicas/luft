@@ -38,4 +38,20 @@ export async function syncAfterSignup() {
 
 export const longDate = (value: string | Date) => new Date(value).toLocaleDateString("es-CO", { day: "numeric", month: "long", timeZone: "UTC" });
 export const shortDate = (value: string | Date) => new Date(value).toLocaleDateString("es-CO", { day: "numeric", month: "short", timeZone: "UTC" }).replace(".", "").replace(" de ", " ");
+/** "15 dic 2026" */
+export const shortDateYear = (value: string | Date) => `${shortDate(value)} ${new Date(value).getUTCFullYear()}`;
+/** "mayo de 2027" */
+export const monthYear = (value: string | Date) => new Date(value).toLocaleDateString("es-CO", { month: "long", year: "numeric", timeZone: "UTC" });
+/** "dic" */
+export const monthName = (value: string | Date) => new Date(value).toLocaleDateString("es-CO", { month: "short", timeZone: "UTC" }).replace(".", "");
+/** "hace 5 minutos", "ayer", "12 nov" */
+export function relativeTime(value: string | Date) {
+  const minutes = Math.round((new Date(value).getTime() - Date.now()) / 60_000);
+  const format = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
+  if (Math.abs(minutes) < 1) return "ahora";
+  if (Math.abs(minutes) < 60) return format.format(minutes, "minute");
+  if (Math.abs(minutes) < 1440) return format.format(Math.round(minutes / 60), "hour");
+  if (Math.abs(minutes) < 10_080) return format.format(Math.round(minutes / 1440), "day");
+  return new Date(value).toLocaleDateString("es-CO", { day: "numeric", month: "short" }).replace(".", "");
+}
 export const daysUntil = (value: string | Date) => Math.round((new Date(value).getTime() - Date.now()) / 86_400_000);
