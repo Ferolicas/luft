@@ -12,6 +12,7 @@ import type {
   CardGuidance,
   CardPurchase,
 } from '../generated/luft/client';
+import { isUniqueViolation } from '../luft/http';
 import { RealtimeService } from '../realtime/realtime.service';
 import { capacityFacts } from '../route/facts';
 import { ProfileFactsService } from '../route/profile-facts.service';
@@ -403,7 +404,17 @@ export class CardsService {
           }),
         );
     }
-    const fresh = await Promise.all(created);
+    // A parallel request may have recorded the same open tip (unique per card and code).
+    const fresh = (
+      await Promise.all(
+        created.map((pending) =>
+          pending.catch((error: unknown) => {
+            if (isUniqueViolation(error)) return null;
+            throw error;
+          }),
+        ),
+      )
+    ).filter((row) => row !== null);
     await Promise.all(writes);
     for (const guidance of fresh)
       if (guidance.severity !== 'INFO')

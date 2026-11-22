@@ -720,6 +720,9 @@ CREATE UNIQUE INDEX "HouseholdMember_one_active_per_user" ON "HouseholdMember"("
 -- Una sola versión de reglas tributarias vigente por año gravable.
 CREATE UNIQUE INDEX "TaxRuleVersion_one_active_per_year" ON "TaxRuleVersion"("taxYear") WHERE "status" = 'ACTIVE';
 
+-- Una recomendación abierta por tarjeta y tipo; las respondidas quedan como historial.
+CREATE UNIQUE INDEX "CardGuidance_one_open_per_tip" ON "CardGuidance"("userId", "cardId", "code") WHERE "status" = 'SHOWN';
+
 -- ---------------------------------------------------------------------------
 -- Catálogos iniciales. Todo es administrable después desde /api/admin.
 -- ---------------------------------------------------------------------------

@@ -198,37 +198,47 @@ export class RouteService {
       return current;
     }
     const now = new Date();
-    const [, created] = await this.db.luft.$transaction([
-      this.db.luft.archetypeAssignment.updateMany({
+    let created: ArchetypeAssignment;
+    try {
+      [, created] = await this.db.luft.$transaction([
+        this.db.luft.archetypeAssignment.updateMany({
+          where: { userId: bundle.userId, supersededAt: null },
+          data: { supersededAt: now },
+        }),
+        this.db.luft.archetypeAssignment.create({
+          data: {
+            userId: bundle.userId,
+            routeId: route.id,
+            categoryCode: route.category.code,
+            archetypeId: decision.archetype.id,
+            archetypeCode: decision.archetype.code,
+            archetypeName: decision.archetype.name,
+            archetypeVersion: decision.archetype.version,
+            reason: reason.slice(0, 80),
+            explanation: decision.explanation as unknown as object,
+            factsCiphertext: this.crypto.encrypt(JSON.stringify(facts)),
+            signature,
+            legacyCode,
+            createdAt: now,
+          },
+        }),
+        this.db.luft.financialProfile.upsert({
+          where: { userId: bundle.userId },
+          create: {
+            userId: bundle.userId,
+            archetype: decision.archetype.code,
+          },
+          update: { archetype: decision.archetype.code },
+        }),
+      ]);
+    } catch (error) {
+      // A concurrent sync stored the assignment first (one current per person).
+      if (!isUniqueViolation(error)) throw error;
+      return this.db.luft.archetypeAssignment.findFirst({
         where: { userId: bundle.userId, supersededAt: null },
-        data: { supersededAt: now },
-      }),
-      this.db.luft.archetypeAssignment.create({
-        data: {
-          userId: bundle.userId,
-          routeId: route.id,
-          categoryCode: route.category.code,
-          archetypeId: decision.archetype.id,
-          archetypeCode: decision.archetype.code,
-          archetypeName: decision.archetype.name,
-          archetypeVersion: decision.archetype.version,
-          reason: reason.slice(0, 80),
-          explanation: decision.explanation as unknown as object,
-          factsCiphertext: this.crypto.encrypt(JSON.stringify(facts)),
-          signature,
-          legacyCode,
-          createdAt: now,
-        },
-      }),
-      this.db.luft.financialProfile.upsert({
-        where: { userId: bundle.userId },
-        create: {
-          userId: bundle.userId,
-          archetype: decision.archetype.code,
-        },
-        update: { archetype: decision.archetype.code },
-      }),
-    ]);
+        orderBy: { createdAt: 'desc' },
+      });
+    }
     await this.audit.record({
       actorUserId: bundle.userId,
       actorRole: 'SYSTEM',

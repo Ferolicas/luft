@@ -19,7 +19,7 @@ import type {
   FormalizationCase,
   TaxRuleVersion,
 } from '../generated/luft/client';
-import { PAGE_SIZE, paged } from '../luft/http';
+import { isUniqueViolation, PAGE_SIZE, paged } from '../luft/http';
 import {
   targetTaxYear,
   taxCheck,
@@ -123,12 +123,18 @@ export class FormalizationService {
   }
 
   private async ensureCase(userId: string): Promise<FormalizationCase> {
-    const taxYear = targetTaxYear();
-    return this.db.luft.formalizationCase.upsert({
-      where: { userId_taxYear: { userId, taxYear } },
-      create: { userId, taxYear },
-      update: {},
-    });
+    const where = { userId_taxYear: { userId, taxYear: targetTaxYear() } };
+    const existing = await this.db.luft.formalizationCase.findUnique({ where });
+    if (existing) return existing;
+    try {
+      return await this.db.luft.formalizationCase.create({
+        data: where.userId_taxYear,
+      });
+    } catch (error) {
+      // A parallel request opened the case first (one per person and year).
+      if (!isUniqueViolation(error)) throw error;
+      return this.db.luft.formalizationCase.findUniqueOrThrow({ where });
+    }
   }
 
   private status(row: FormalizationCase): FormalizationStatus {
@@ -228,14 +234,20 @@ export class FormalizationService {
       });
       return { row: updated, check };
     }
-    const updated = await this.transition(
-      row,
-      next,
-      'DIAGNOSED',
-      { id: userId, role: 'SYSTEM' },
-      { data },
-    );
-    return { row: updated, check };
+    try {
+      const updated = await this.transition(
+        row,
+        next,
+        'DIAGNOSED',
+        { id: userId, role: 'SYSTEM' },
+        { data },
+      );
+      return { row: updated, check };
+    } catch (error) {
+      // Another request diagnosed or moved the case at the same time: read it again.
+      if (!(error instanceof ConflictException)) throw error;
+      return { row: await this.ensureCase(userId), check };
+    }
   }
 
   async diagnoseQuietly(userId: string, known?: FinancialContext) {
