@@ -259,7 +259,7 @@ export function GoalCard({ goal, canContribute, busy, onContribute, onEdit, onRe
   return (
     <article className="l-card v2-goal">
       <div className="v2-card-head">
-        <div><h3>{goal.title}</h3><p className="l-small">{goal.kind ? `${goal.kind} · ` : ""}Meta de {goal.isMine ? "tuya" : goal.ownerName}{goal.targetDate ? ` · para el ${fmtDate(goal.targetDate)}` : ""}</p></div>
+        <div><h3>{goal.title}</h3><p className="l-small">{goal.kind ? `${goal.kind} · ` : ""}{goal.isMine ? "Meta tuya" : `Meta de ${goal.ownerName}`}{goal.targetDate ? ` · para el ${fmtDate(goal.targetDate)}` : ""}</p></div>
         <Chip tone={goal.status === "COMPLETED" || goal.reached ? "green" : "blue"}>{goal.status === "COMPLETED" ? "Cumplida" : goal.reached ? "Monto alcanzado" : "Activa"}</Chip>
       </div>
       <div className="amounts"><strong>{formatCOP(goal.confirmedCOP)}</strong><span>de {formatCOP(goal.targetCOP)}{goal.pendingCOP > 0 ? <><br />{formatCOP(goal.pendingCOP)} por confirmar</> : null}</span></div>

@@ -38,7 +38,8 @@
 .v2-sheet-head strong { display: block; font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }
 .v2-sheet-head p { margin-top: 6px; font-size: 14px; line-height: 19px; color: var(--l-n-600); text-wrap: pretty; }
 .v2-sheet-text { font-size: 14px; line-height: 20px; color: var(--l-n-600); display: grid; gap: 10px; }
-.v2-consent { padding: 14px; border-radius: 16px; background: var(--l-n-50); border: var(--l-stroke, 1.5px) solid var(--l-n-200); display: grid; gap: 6px; max-height: 220px; overflow-y: auto; }
+.v2-consent { padding: 14px; border-radius: 16px; background: var(--l-n-50); border: var(--l-stroke, 1.5px) solid var(--l-n-200); display: grid; gap: 6px; }
+.l-sheet .v2-consent { max-height: 240px; overflow-y: auto; }
 .v2-consent p { font-size: 13px; line-height: 19px; color: var(--l-n-700); }
 .v2-form { display: grid; gap: 14px; }
 .v2-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -202,7 +203,7 @@
 .v2-stepper button { width: 40px; height: 40px; border-radius: 999px; background: var(--l-blue-50); color: var(--l-blue-500); font-size: 20px; font-weight: 500; display: grid; place-items: center; }
 .v2-stepper button:disabled { opacity: .4; cursor: not-allowed; }
 .v2-stepper strong { min-width: 28px; text-align: center; font-size: 20px; font-weight: 700; }
-.v2-members { display: grid; gap: 10px; }
+.v2-members { display: grid; gap: 10px; align-items: start; }
 .v2-member { display: grid; gap: 12px; padding: 14px; border-radius: 20px; background: #fff; border: var(--l-stroke, 1.5px) solid var(--l-n-200); }
 .v2-member .who { display: flex; align-items: center; gap: 12px; }
 .v2-member .who strong { display: block; font-size: 16px; line-height: 21px; font-weight: 500; }
@@ -316,7 +317,6 @@
   .v2-kinds { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .l-shell .v2-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
   .l-shell .v2-grid2 > .full { grid-column: 1 / -1; }
-  .l-sheet .v2-consent { max-height: 260px; }
   /* Pantalla pública de invitación dentro del marco de marca */
   .l-auth .l-screen.v2-invite .l-header { text-align: left; }
   .l-auth .l-screen.v2-invite .v2-header-chips { justify-content: flex-start; }

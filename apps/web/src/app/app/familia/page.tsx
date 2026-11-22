@@ -123,7 +123,7 @@ function Household({ board, subscription, onSubscription, refresh }: { board: Ho
                   <div className="v2-card-head"><div><h3>Tablero del hogar</h3><p className="l-small">Solo suma lo que cada integrante autorizó compartir contigo.</p></div></div>
                   <Facts items={[
                     { label: "Integrantes", value: stats.members, hint: `${stats.beneficiaries} con ruta · ${stats.support} de apoyo` },
-                    { label: "Avance promedio de ruta", value: stats.routeProgress ? `${stats.routeProgress.averagePercent}%` : "—", hint: stats.routeProgress ? `Lo ${stats.routeProgress.sharedBy === 1 ? "comparte 1 integrante" : `comparten ${stats.routeProgress.sharedBy}`}` : "Nadie lo comparte contigo" },
+                    { label: "Avance promedio de ruta", value: stats.routeProgress ? `${stats.routeProgress.averagePercent}%` : "—", hint: stats.routeProgress ? `Lo ${stats.routeProgress.sharedBy === 1 ? "comparte 1 integrante" : `comparten ${stats.routeProgress.sharedBy} integrantes`}` : "Nadie lo comparte contigo" },
                     { label: "Aprendizaje", value: stats.learning ? plural(stats.learning.lessonsCompleted, "lección", "lecciones") : "—", hint: stats.learning ? `${plural(stats.learning.modulesCompleted, "módulo", "módulos")} · ${stats.learning.sharedBy === 1 ? "1 integrante" : `${stats.learning.sharedBy} integrantes`}` : "Nadie lo comparte contigo" },
                     { label: "Créditos al día", value: stats.credit ? `${stats.credit.upToDate} de ${stats.credit.sharedBy}` : "—", hint: stats.credit ? "Entre quienes lo comparten" : "Nadie lo comparte contigo" },
                   ]} />
