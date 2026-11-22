@@ -29,6 +29,11 @@ import { CryptoService } from '../common/crypto.service';
 import { DatabaseService } from '../database/database.service';
 import { UserStatus } from '../generated/identity/enums';
 import { IntegrationService } from '../integrations/integration.service';
+import {
+  closeLuftAccountData,
+  purgeLuftAccountData,
+} from '../luft/account-data';
+import { eraseMatchingAccountData } from '../matching/account-data';
 import type { AuthenticatedUser } from './auth.types';
 
 const registrationSchema = z.object({
@@ -528,6 +533,8 @@ export class AuthService {
           data: { revokedAt: now },
         }),
       ]);
+      await closeLuftAccountData(this.db, user.id);
+      await eraseMatchingAccountData(this.db, user.id);
       response.clearCookie(this.cookieName, { path: '/' });
       return {
         ok: true,
@@ -541,6 +548,8 @@ export class AuthService {
       this.db.startif.pqr.deleteMany({ where: { userId: user.id } }),
       this.db.startif.startifConsent.deleteMany({ where: { userId: user.id } }),
     ]);
+    await purgeLuftAccountData(this.db, user.id);
+    await eraseMatchingAccountData(this.db, user.id);
     await this.db.luft.$transaction([
       this.db.luft.opportunity.deleteMany({ where: { userId: user.id } }),
       this.db.luft.scoreInquiry.deleteMany({ where: { userId: user.id } }),

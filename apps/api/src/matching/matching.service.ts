@@ -1,3 +1,4 @@
+import { eraseMatchingAccountData } from './account-data';
 import {
   BadRequestException,
   ConflictException,
@@ -695,22 +696,7 @@ export class MatchingService {
    * matching module holds about the person is deleted.
    */
   async eraseUserData(userId: string) {
-    const kept = await this.db.scoring.matchPresentation.findMany({
-      where: { userId, presentedAt: { not: null } },
-      select: { result: { select: { runId: true } } },
-    });
-    const keptRuns = [...new Set(kept.map((row) => row.result.runId))];
-    await this.db.scoring.$transaction([
-      this.db.scoring.matchPresentation.deleteMany({
-        where: { userId, presentedAt: null },
-      }),
-      this.db.scoring.matchRun.deleteMany({
-        where: { userId, id: { notIn: keptRuns } },
-      }),
-      this.db.scoring.matchingSupplement.deleteMany({ where: { userId } }),
-      this.db.scoring.allyReferral.deleteMany({ where: { userId } }),
-    ]);
-    return { retainedPresentations: kept.length };
+    return eraseMatchingAccountData(this.db, userId);
   }
 
   // ------------------------------------------------------------------ internos

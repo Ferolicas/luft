@@ -208,7 +208,7 @@ describe('rule engine · policy evaluation', () => {
     expect(requirement.totals.missingData).toBe(1);
     const [gap] = explain(requirement, 'user').gaps;
     expect(gap.message).toContain('Dato faltante: Edad');
-    expect(gap.completeHref).toBe('/app/matching/datos');
+    expect(gap.completeHref).toBe('/app/oportunidades/datos');
 
     // Unknown facts also block exclusions: they cannot be ruled out…
     const exclusion = evaluatePolicy({}, [

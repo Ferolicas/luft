@@ -1,23 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { CryptoService } from '../common/crypto.service';
 import { DatabaseService } from '../database/database.service';
-import { taxCheck, type FinancialContext } from '../luft/journey';
+import {
+  targetTaxYear,
+  taxCheck,
+  type FinancialContext,
+  type TaxRule,
+} from '../luft/journey';
 import type { ProfileContext, ProfileSignals } from './facts';
 
 /**
- * EXTENSION POINT — category and archetype catalog.
+ * Category and archetype source.
  *
  * Matching and analytics never read LUFT tables directly: they ask a
- * `ProfileSource`. Today the only implementation (`LuftProfileSource`) reads
- * `FinancialProfile.archetype` / `primaryGoal` and the encrypted journey
- * context, and reports `category: null` because the category catalog does not
- * exist yet. Rules on `category` therefore produce a "dato faltante" gap.
- *
- * When the LUFT domain publishes its category/archetype tables, change ONLY
- * `LuftProfileSource.signals` and `LuftProfileSource.segments` to return the
- * category code (and the versioned archetype), or bind another class to the
- * `PROFILE_SOURCE` token in `MatchingModule`. Category codes are compared
- * without case or accents; the catalog suggests JOVEN, ADULTO and FAMILIA.
+ * `ProfileSource`. `LuftProfileSource` reads the category of the person's
+ * active route (`UserRoute` → `ServiceCategory.code`), the current archetype
+ * and goal from `FinancialProfile`, and the encrypted journey context. A
+ * person without an active route has `category: null`, so rules on `category`
+ * produce a "dato faltante" gap instead of counting as met. Category codes
+ * are compared without accents or case.
  */
 export const PROFILE_SOURCE = Symbol('MATCHING_PROFILE_SOURCE');
 
@@ -62,9 +63,16 @@ export class LuftProfileSource implements ProfileSource {
           typeof item?.kind === 'string' ? [item.kind as string] : [],
         )
       : [];
+    const [route, rule] = await Promise.all([
+      this.db.luft.userRoute.findFirst({
+        where: { userId, status: 'ACTIVE' },
+        orderBy: { startedAt: 'desc' },
+        select: { category: { select: { code: true } } },
+      }),
+      this.activeTaxRule(),
+    ]);
     return {
-      // No category catalog yet: see the extension point above.
-      category: null,
+      category: route?.category.code ?? null,
       archetype: profile?.archetype ?? null,
       primaryGoal: profile?.primaryGoal ?? null,
       completedSections: Object.entries(record(state.sections))
@@ -72,7 +80,7 @@ export class LuftProfileSource implements ProfileSource {
         .map(([key]) => key),
       context,
       documents,
-      taxAlert: this.taxAlert(context),
+      taxAlert: this.taxAlert(context, rule),
     };
   }
 
@@ -83,9 +91,17 @@ export class LuftProfileSource implements ProfileSource {
       where: { userId: { in: [...userIds] } },
       select: { userId: true, archetype: true },
     });
+    const routes = await this.db.luft.userRoute.findMany({
+      where: { userId: { in: [...userIds] }, status: 'ACTIVE' },
+      orderBy: { startedAt: 'asc' },
+      select: { userId: true, category: { select: { code: true } } },
+    });
+    const categories = new Map(
+      routes.map((route) => [route.userId, route.category.code]),
+    );
     for (const profile of profiles)
       result.set(profile.userId, {
-        category: null,
+        category: categories.get(profile.userId) ?? null,
         archetype: profile.archetype ?? null,
       });
     return result;
@@ -101,11 +117,40 @@ export class LuftProfileSource implements ProfileSource {
     }
   }
 
-  /** Orientation only: `null` until income, assets and debts are complete. */
-  private taxAlert(context: ProfileContext): boolean | null {
+  /** Rule version in force for the taxable year being diagnosed, if any. */
+  private async activeTaxRule(): Promise<TaxRule | null> {
+    const row = await this.db.luft.taxRuleVersion.findFirst({
+      where: { taxYear: targetTaxYear(), status: 'ACTIVE' },
+      orderBy: { version: 'desc' },
+    });
+    return row
+      ? {
+          id: row.id,
+          taxYear: row.taxYear,
+          version: row.version,
+          uvtCOP: row.uvtCOP,
+          wealthUvt: row.wealthUvt,
+          incomeUvt: row.incomeUvt,
+          cardSpendUvt: row.cardSpendUvt,
+          purchasesUvt: row.purchasesUvt,
+          depositsUvt: row.depositsUvt,
+          sourceDocument: row.sourceDocument,
+          effectiveFrom: row.effectiveFrom.toISOString().slice(0, 10),
+        }
+      : null;
+  }
+
+  /**
+   * Orientation only: `null` until income, assets and debts are complete or
+   * while no rule version is in force for the taxable year.
+   */
+  private taxAlert(
+    context: ProfileContext,
+    rule: TaxRule | null,
+  ): boolean | null {
     try {
-      const check = taxCheck(context as FinancialContext);
-      return check.ready ? check.mayHaveToFile : null;
+      const check = taxCheck(context as FinancialContext, rule);
+      return check.ready && check.available ? check.mayHaveToFile : null;
     } catch {
       return null;
     }

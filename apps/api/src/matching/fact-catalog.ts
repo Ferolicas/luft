@@ -157,7 +157,7 @@ const field = (
 });
 
 const PROFILE = '/app/perfil/financiero';
-const DECLARED = '/app/matching/datos';
+const DECLARED = '/app/oportunidades/datos';
 
 export const FACT_FIELDS: readonly FactField[] = [
   field(
@@ -173,7 +173,7 @@ export const FACT_FIELDS: readonly FactField[] = [
         FAMILIA: 'Familia · LUFT Juntos',
       }),
       source: 'Catálogo de categorías de LUFT (fuente de perfil).',
-      availability: 'EXTENSION',
+      availability: 'DISPONIBLE',
     },
   ),
   field(

@@ -133,7 +133,8 @@ export class ProfileFactsService {
           },
         },
       }),
-      this.db.luft.opportunity.count({ where: { userId } }),
+      // Matching results live in the decisions (scoring) domain.
+      this.db.scoring.matchRun.count({ where: { userId } }),
     ]);
     const state = readJourneyState(profile?.demographicAnswers);
     const context = this.decryptContext(state);
