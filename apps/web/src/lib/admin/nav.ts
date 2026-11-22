@@ -15,7 +15,7 @@ export const ROLE_LABEL: Record<string, string> = {
   LEGAL: "Legal",
   SUPPORT: "Soporte",
   COLLECTIONS: "Cartera y cobranza",
-  RISK: "Riesgo (analista STARTIF)",
+  RISK: "Analista de riesgo",
   FINANCE: "Finanzas",
   SUPERADMIN: "Superadministración",
   ALLY: "Aliado",

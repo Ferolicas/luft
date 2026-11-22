@@ -683,6 +683,7 @@ button.cs-link { padding: 0; border: 0; background: none; font-size: inherit; }
 .cs-facts .wide { grid-column: 1 / -1; }
 .cs-facts dt { color: var(--muted); font-size: .68rem; font-weight: 750; letter-spacing: .03em; text-transform: uppercase; }
 .cs-facts dd { margin: 2px 0 0; font-size: .86rem; font-weight: 600; overflow-wrap: anywhere; }
+.cs-facts dd .cs-badge { white-space: normal; }
 
 .cs-table-wrap { overflow-x: auto; }
 .cs-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }

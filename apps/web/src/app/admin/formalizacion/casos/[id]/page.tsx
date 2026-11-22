@@ -2,7 +2,7 @@
 
 import { Download } from "lucide-react";
 import { useParams } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, Fragment, useState } from "react";
 import { useConsole } from "@/components/app-shell";
 import { Badge, Button, ConfirmDialog, ErrorBox, Facts, Field, FormActions, Loaded, Modal, PageHead, Panel, StatusBadge, useAction, useLoad } from "@/components/admin/ui";
 import { cop, dateTime, day, integer, today } from "@/lib/admin/format";
@@ -56,10 +56,10 @@ export default function CaseDetailPage() {
             />
             <div className="cs-steps" aria-label="Fase del caso">
               {STEPS.map((step, index) => (
-                <span key={step.key} className="cs-row" style={{ gap: 0 }}>
+                <Fragment key={step.key}>
                   {index > 0 && <i aria-hidden="true" />}
                   <span className={index < stepIndex ? "done" : index === stepIndex ? "current" : ""}>{index + 1}. {step.label}</span>
-                </span>
+                </Fragment>
               ))}
             </div>
             {data.actions.length === 0 && <p className="cs-note">{data.case.status === "VERIFICADO" ? "Caso cerrado: la evidencia quedó verificada y se incorporó al perfil de la persona." : "Este caso está del lado de la persona: no hay acciones de revisión disponibles en su estado actual."}</p>}

@@ -51,7 +51,7 @@ export function PolicySimulator({ versionId, rules, catalog }: { versionId: stri
         <div className="cs-stack" style={{ gap: 14 }}>
           <div className="cs-fields cs-fields-3">
             {fields.map((field) => (
-              <Field key={field.key} label={`${field.label}${field.unit ? ` (${field.unit})` : ""}`} wide={field.type === "list"}>
+              <Field key={field.key} label={`${field.label}${field.unit && field.unit !== "COP" && field.unit !== "razón" ? ` (${field.unit})` : ""}`} wide={field.type === "list"} group={field.type === "list"}>
                 <FactInput field={field} value={values[field.key] ?? (field.type === "list" ? [] : "")} onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))} />
               </Field>
             ))}

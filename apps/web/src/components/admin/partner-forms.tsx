@@ -127,8 +127,8 @@ export function ProductForm({ product, institutions, defaultInstitutionId, catal
           <Field label="Notas de la comisión" wide><input value={values.commissionNotes} onChange={set("commissionNotes")} maxLength={2000} /></Field>
         </div>
         <div className="cs-fields">
-          <Field label="Garantías"><ListEditor values={guarantees} onChange={setGuarantees} placeholder="Ej.: Pagaré, codeudor" addLabel="Agregar garantía" max={20} /></Field>
-          <Field label="Documentos que pide la entidad"><ListEditor values={documents} onChange={setDocuments} placeholder="Ej.: Certificado laboral" addLabel="Agregar documento" max={30} /></Field>
+          <Field label="Garantías" group><ListEditor values={guarantees} onChange={setGuarantees} placeholder="Ej.: Pagaré, codeudor" addLabel="Agregar garantía" max={20} /></Field>
+          <Field label="Documentos que pide la entidad" group><ListEditor values={documents} onChange={setDocuments} placeholder="Ej.: Certificado laboral" addLabel="Agregar documento" max={30} /></Field>
         </div>
         <Check label="Producto activo" hint="Un producto inactivo no entra al matching." checked={active} onChange={setActive} />
         <ErrorBox problem={action.problem} />

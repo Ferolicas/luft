@@ -42,7 +42,7 @@ export default function BacktestPage() {
             ) : (
               <>
                 <div className="cs-stats">
-                  <Stat label="Instantáneas evaluadas" value={integer(result.evaluated)} hint={`${integer(result.users)} personas`} />
+                  <Stat label="Instantáneas evaluadas" value={integer(result.evaluated)} hint={`${integer(result.users)} ${result.users === 1 ? "persona" : "personas"}`} />
                   <Stat label="Serían elegibles" value={rate(result.eligibleRate)} hint={`${integer(result.predicted.ELEGIBLE)} de ${integer(result.evaluated)}`} />
                   <Stat label="Encaje promedio" value={result.averageFitPercent === null ? "—" : points(result.averageFitPercent, 1)} />
                   <Stat label="Coincidencia con decisiones reales" value={rate(result.approval.agreementRate)} hint={`${integer(result.approval.withDecision)} con decisión de la entidad`} />
@@ -79,8 +79,8 @@ export default function BacktestPage() {
                         max={1}
                         format={(value) => percent(value, 1)}
                         items={[
-                          { label: `Elegibles (${result.delinquency.eligible.loans} créditos)`, value: result.delinquency.eligible.rate, hint: `${result.delinquency.eligible.delinquent} en mora` },
-                          { label: `No elegibles (${result.delinquency.notEligible.loans} créditos)`, value: result.delinquency.notEligible.rate, hint: `${result.delinquency.notEligible.delinquent} en mora` },
+                          { label: `Elegibles (${result.delinquency.eligible.loans} ${result.delinquency.eligible.loans === 1 ? "crédito" : "créditos"})`, value: result.delinquency.eligible.rate, hint: `${result.delinquency.eligible.delinquent} en mora` },
+                          { label: `No elegibles (${result.delinquency.notEligible.loans} ${result.delinquency.notEligible.loans === 1 ? "crédito" : "créditos"})`, value: result.delinquency.notEligible.rate, hint: `${result.delinquency.notEligible.delinquent} en mora` },
                         ]}
                       />
                     )}

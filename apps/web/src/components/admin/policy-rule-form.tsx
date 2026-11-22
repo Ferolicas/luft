@@ -121,7 +121,7 @@ export function PolicyRuleForm({ catalog, rule, onSubmit, onClose }: { catalog: 
               {(field?.operators ?? []).map((key) => <option key={key} value={key}>{catalog.operators.find((item) => item.key === key)?.label ?? key}</option>)}
             </select>
           </Field>
-          <Field label="Valor" required error={touched ? parsed.error : null} hint={shape === "range" ? (moneyHint(draft.min) && moneyHint(draft.max) ? `${moneyHint(draft.min)} a ${moneyHint(draft.max)}` : "Mínimo y máximo, incluidos.") : shape === "list" ? (field && field.options.length > 0 ? "Elige una o varias opciones." : "Valores separados por coma.") : (moneyHint(draft.scalar) ?? (field?.type === "text" ? "Se compara sin tildes ni mayúsculas." : undefined))}>
+          <Field label="Valor" required group error={touched ? parsed.error : null} hint={shape === "range" ? (moneyHint(draft.min) && moneyHint(draft.max) ? `${moneyHint(draft.min)} a ${moneyHint(draft.max)}` : "Mínimo y máximo, incluidos.") : shape === "list" ? (field && field.options.length > 0 ? "Elige una o varias opciones." : "Valores separados por coma.") : (moneyHint(draft.scalar) ?? (field?.type === "text" ? "Se compara sin tildes ni mayúsculas." : undefined))}>
             {shape === "range" ? (
               <div className="cs-range">{numberInput(draft.min, (value) => setDraft({ ...draft, min: value }), "Mínimo", "Valor mínimo")}<span>a</span>{numberInput(draft.max, (value) => setDraft({ ...draft, max: value }), "Máximo", "Valor máximo")}</div>
             ) : shape === "list" ? (

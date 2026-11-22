@@ -236,14 +236,22 @@ export function Button({ variant = "primary", small = false, className = "", typ
   return <button type={type} className={`cs-btn cs-btn-${variant} ${small ? "cs-btn-sm" : ""} ${className}`} {...rest} />;
 }
 
-export function Field({ label, hint, error, children, wide = false, required = false }: { label: string; hint?: ReactNode; error?: string | null; children: ReactNode; wide?: boolean; required?: boolean }) {
-  return (
-    <label className={`cs-field ${wide ? "wide" : ""} ${error ? "has-error" : ""}`}>
-      <span>{label}{required && <i aria-hidden="true"> *</i>}</span>
+/**
+ * Campo de formulario. Con un solo control envuelve en `<label>`; con `group`
+ * (listas, casillas, rangos: varios controles) usa un grupo etiquetado, para
+ * que un clic en el rótulo no active el primer control.
+ */
+export function Field({ label, hint, error, children, wide = false, required = false, group = false }: { label: string; hint?: ReactNode; error?: string | null; children: ReactNode; wide?: boolean; required?: boolean; group?: boolean }) {
+  const id = useId();
+  const className = `cs-field ${wide ? "wide" : ""} ${error ? "has-error" : ""}`;
+  const body = (
+    <>
+      <span id={group ? id : undefined}>{label}{required && <i aria-hidden="true"> *</i>}</span>
       {children}
       {error ? <small className="cs-field-error">{error}</small> : hint ? <small>{hint}</small> : null}
-    </label>
+    </>
   );
+  return group ? <div className={className} role="group" aria-labelledby={id}>{body}</div> : <label className={className}>{body}</label>;
 }
 
 export function Check({ label, checked, onChange, disabled, hint }: { label: ReactNode; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean; hint?: ReactNode }) {

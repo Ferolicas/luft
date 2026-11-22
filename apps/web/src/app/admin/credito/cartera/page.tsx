@@ -44,7 +44,7 @@ export default function PortfolioPage() {
                 rowKey={(row) => row.id}
                 empty={<Empty title="No hay préstamos en este estado" />}
                 columns={[
-                  { key: "loan", header: "Crédito", cell: (row) => <Cell main={<span className="cs-mono">{shortId(row.id)}</span>} sub={`${PRODUCT_CODE_LABEL[row.productCode] ?? row.productCode} · ${label(row.purpose)}`} /> },
+                  { key: "loan", header: "Crédito", width: "200px", cell: (row) => <Cell main={<span className="cs-mono">{shortId(row.id)}</span>} sub={`${PRODUCT_CODE_LABEL[row.productCode] ?? row.productCode} · ${label(row.purpose)}`} /> },
                   { key: "person", header: "Persona", cell: (row) => <PersonCell id={row.userId} people={people} /> },
                   { key: "principal", header: "Capital", align: "right", cell: (row) => <Cell main={cop(row.principalCOP)} sub={`${percent(Number(row.monthlyRate))} mensual`} /> },
                   { key: "balance", header: "Saldo de capital", align: "right", cell: (row) => <strong>{cop(row.outstandingBalanceCOP)}</strong> },
@@ -56,9 +56,9 @@ export default function PortfolioPage() {
                       ? <Cell main={<Badge tone="bad">{row.daysOverdue} días de atraso</Badge>} sub={`${row.overdueInstallments} ${row.overdueInstallments === 1 ? "cuota vencida" : "cuotas vencidas"} · ${cop(row.overdueCOP)}`} />
                       : <span className="cs-muted">Sin atrasos</span>,
                   },
-                  { key: "status", header: "Estado", cell: (row) => <Cell main={<StatusBadge value={row.status} labels={STATUS_LABEL} />} sub={row.status === "WRITTEN_OFF" ? `Castigado el ${date(row.writtenOffAt)}` : row.status === "DEFAULTED" && row.defaultedAt ? `En mora desde ${date(row.defaultedAt)}` : undefined} /> },
+                  { key: "status", header: "Estado", cell: (row) => <Cell main={<StatusBadge value={row.status} labels={STATUS_LABEL} />} sub={row.status === "WRITTEN_OFF" ? `Castigado el ${date(row.writtenOffAt)}${row.writtenOffReason ? ` · ${row.writtenOffReason}` : ""}` : row.status === "DEFAULTED" && row.defaultedAt ? `En mora desde ${date(row.defaultedAt)}` : undefined} /> },
                   { key: "disbursed", header: "Desembolso", cell: (row) => date(row.disbursedAt) },
-                  { key: "actions", header: "", align: "right", cell: (row) => (row.status === "DEFAULTED" && canWriteOff ? <Button small variant="ghost" className="cs-btn-danger-text" onClick={() => setWriteOff(row)}>Castigar</Button> : row.status === "WRITTEN_OFF" && row.writtenOffReason ? <span className="cs-small cs-muted" title={row.writtenOffReason}>{row.writtenOffReason.slice(0, 40)}{row.writtenOffReason.length > 40 ? "…" : ""}</span> : null) },
+                  { key: "actions", header: "", align: "right", cell: (row) => (row.status === "DEFAULTED" && canWriteOff ? <Button small variant="ghost" className="cs-btn-danger-text" onClick={() => setWriteOff(row)}>Castigar</Button> : null) },
                 ]}
               />
               <Pager page={data.page} pages={data.pages} total={data.total} onPage={setPage} noun="préstamos" />

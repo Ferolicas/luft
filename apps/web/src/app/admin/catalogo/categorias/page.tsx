@@ -164,17 +164,17 @@ function CategoryForm({ category, modules, readOnly, nextPosition, onClose, onSa
         <fieldset className="cs-fieldset" disabled={readOnly}>
           <legend>Onboarding</legend>
           <Field label="Titular de bienvenida" required><input value={config.onboarding.headline} onChange={(event) => patch({ onboarding: { ...config.onboarding, headline: event.target.value } })} minLength={3} maxLength={160} required /></Field>
-          <Field label="Pasos de la ruta (1 a 8)" required error={stepsError}>
+          <Field label="Pasos de la ruta (1 a 8)" required error={stepsError} group>
             <ListEditor values={config.onboarding.steps} onChange={(values) => patch({ onboarding: { ...config.onboarding, steps: values } })} placeholder="Ej.: Conoce tu punto de partida en las centrales de riesgo" addLabel="Agregar paso" max={8} disabled={readOnly} />
           </Field>
         </fieldset>
         <fieldset className="cs-fieldset" disabled={readOnly}>
           <legend>Módulos, documentos y proyectos</legend>
-          <Field label="Módulos de aprendizaje de la categoría" hint="Módulos publicados en la academia.">
+          <Field label="Módulos de aprendizaje de la categoría" hint="Módulos publicados en la academia." group>
             {moduleOptions.length > 0 ? <OptionChecks options={moduleOptions} values={config.modules} onChange={(values) => patch({ modules: values })} disabled={readOnly} /> : <ListEditor values={config.modules} onChange={(values) => patch({ modules: values })} placeholder="slug-del-modulo" addLabel="Agregar módulo" max={30} disabled={readOnly} />}
           </Field>
-          <Field label="Documentos que se piden"><OptionChecks options={DOCUMENT_OPTIONS} values={config.requiredDocuments} onChange={(values) => patch({ requiredDocuments: values })} disabled={readOnly} /></Field>
-          <Field label="Tipos de proyecto de vida sugeridos"><OptionChecks options={PROJECT_OPTIONS} values={config.projectKinds} onChange={(values) => patch({ projectKinds: values })} disabled={readOnly} /></Field>
+          <Field label="Documentos que se piden" group><OptionChecks options={DOCUMENT_OPTIONS} values={config.requiredDocuments} onChange={(values) => patch({ requiredDocuments: values })} disabled={readOnly} /></Field>
+          <Field label="Tipos de proyecto de vida sugeridos" group><OptionChecks options={PROJECT_OPTIONS} values={config.projectKinds} onChange={(values) => patch({ projectKinds: values })} disabled={readOnly} /></Field>
         </fieldset>
         <fieldset className="cs-fieldset" disabled={readOnly}>
           <legend>Mensajes</legend>

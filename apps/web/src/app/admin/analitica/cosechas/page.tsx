@@ -92,10 +92,10 @@ function CohortsView({ data, bucket, setBucket, selected, setSelected, showDefin
       )}
       <div className="cs-stats">
         <Stat label="Créditos originados" value={integer(totals.loans)} hint={`${integer(totals.borrowers)} personas · ${cop(totals.originatedCOP)}`} />
-        <Stat label="Saldo de capital" value={cop(totals.outstandingCOP)} hint={`${integer(totals.activeLoans)} vigentes · ${integer(totals.closedLoans)} cerrados`} />
+        <Stat label="Saldo de capital" value={cop(totals.outstandingCOP)} hint={`${integer(totals.activeLoans)} ${totals.activeLoans === 1 ? "vigente" : "vigentes"} · ${integer(totals.closedLoans)} ${totals.closedLoans === 1 ? "cerrado" : "cerrados"}`} />
         <Stat label="Cuotas pagadas a tiempo" value={rate(totals.installments.onTimeRate)} hint={`${integer(totals.installments.paidOnTime)} de ${integer(totals.installments.due)} vencidas`} tone={totals.installments.onTimeRate !== null && totals.installments.onTimeRate >= 0.9 ? "good" : undefined} />
-        <Stat label="Alguna vez en mora 30+" value={rate(totals.delinquency.everRate30)} hint={`${integer(totals.delinquency.ever30)} créditos · hoy ${integer(totals.delinquency.current30)}`} tone={totals.delinquency.ever30 > 0 ? "warn" : undefined} />
-        <Stat label="Incumplidos y castigados" value={integer(totals.defaultedLoans + totals.writtenOffLoans)} hint={`${integer(totals.defaultedLoans)} en mora · ${integer(totals.writtenOffLoans)} castigados (${cop(totals.writtenOffCOP)})`} tone={totals.defaultedLoans + totals.writtenOffLoans > 0 ? "bad" : undefined} />
+        <Stat label="Alguna vez en mora 30+" value={rate(totals.delinquency.everRate30)} hint={`${integer(totals.delinquency.ever30)} ${totals.delinquency.ever30 === 1 ? "crédito" : "créditos"} · hoy ${integer(totals.delinquency.current30)}`} tone={totals.delinquency.ever30 > 0 ? "warn" : undefined} />
+        <Stat label="Incumplidos y castigados" value={integer(totals.defaultedLoans + totals.writtenOffLoans)} hint={`${integer(totals.defaultedLoans)} en mora · ${integer(totals.writtenOffLoans)} ${totals.writtenOffLoans === 1 ? "castigado" : "castigados"} (${cop(totals.writtenOffCOP)})`} tone={totals.defaultedLoans + totals.writtenOffLoans > 0 ? "bad" : undefined} />
       </div>
       {unavailable && <p className="cs-note cs-note-warn">Todavía no hay datos de «{GROUP_LABEL[data.groupBy].toLowerCase()}» para los créditos originados: las cosechas aparecen bajo «Sin dato».</p>}
       {data.cohorts.length === 0 ? (
@@ -155,7 +155,7 @@ function CohortsView({ data, bucket, setBucket, selected, setSelected, showDefin
           {active && (
             <Panel title={`Curva de mora · cosecha ${cohortName(active, data.groupBy)}`} description="Porcentaje de créditos de la cosecha con mora de 30, 60 y 90 días o más, por mes en libros.">
               {active.monthsOnBooks.length === 0 ? <Empty title="Esta cosecha aún no cumple su primer mes en libros" /> : (
-                <div className="cs-grid cs-grid-side">
+                <div className="cs-grid cs-grid-2" style={{ alignItems: "start" }}>
                   <LineChart
                     label={`Curva de mora de la cosecha ${cohortName(active, data.groupBy)}`}
                     xLabel="Mes en libros"

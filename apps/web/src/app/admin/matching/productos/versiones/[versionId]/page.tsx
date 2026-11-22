@@ -3,7 +3,7 @@
 import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, Fragment, useState } from "react";
 import { useConsole } from "@/components/app-shell";
 import { useMatchingCatalog } from "@/components/admin/matching";
 import { PolicyRuleForm } from "@/components/admin/policy-rule-form";
@@ -24,6 +24,8 @@ const TRANSITION: Record<PolicyStatus, { button: string; title: string; done: st
   SUSTITUIDA: { button: "Sustituir", title: "Sustituir", done: "", note: "optional" },
 };
 const INDEPENDENCE_TEXT: Record<string, string> = { OTRO_ROL: "Aprobada por otra persona con otro rol", OTRA_PERSONA: "Aprobada por otra persona", MISMA_PERSONA: "Aprobada por la misma persona que la editó (no había otra disponible)" };
+const EVENT_LABEL: Record<string, string> = { created: "Versión creada", cloned: "Clonada de otra versión", submitted: "Enviada a revisión", returned: "Devuelta a borrador", approved: "Aprobada", activated: "Puesta vigente", reopened: "Reabierta como borrador", suspended: "Suspendida", reactivated: "Reactivada", superseded: "Sustituida por una versión nueva", changed: "Cambio de estado" };
+const eventLabel = (action: string) => EVENT_LABEL[action] ?? label(action);
 const kindTone = (kind: string) => (kind === "EXCLUSION" ? "bad" : kind === "PREFERENCIA" ? "info" : "neutral");
 
 export default function PolicyVersionPage() {
@@ -61,12 +63,12 @@ export default function PolicyVersionPage() {
             <ErrorBox problem={problem} />
             <div className="cs-steps" aria-label="Estado de la versión">
               {POLICY_FLOW.map((status, index) => (
-                <span key={status} className="cs-row" style={{ gap: 0 }}>
+                <Fragment key={status}>
                   {index > 0 && <i aria-hidden="true" />}
-                  <span className={flowIndex > index || (flowIndex === -1) ? "done" : flowIndex === index ? "current" : ""}>{index + 1}. {optionLabel(catalog?.policyStatuses, status)}</span>
-                </span>
+                  <span className={flowIndex > index || flowIndex === -1 ? "done" : flowIndex === index ? "current" : ""}>{index + 1}. {optionLabel(catalog?.policyStatuses, status)}</span>
+                </Fragment>
               ))}
-              {(data.status === "SUSTITUIDA" || data.status === "SUSPENDIDA") && <span className="cs-row" style={{ gap: 0 }}><i aria-hidden="true" /><span className="off">{data.statusLabel}</span></span>}
+              {(data.status === "SUSTITUIDA" || data.status === "SUSPENDIDA") && <><i aria-hidden="true" /><span className="off">{data.statusLabel}</span></>}
             </div>
             {data.status === "BORRADOR" && data.submissionIssues.length > 0 && (
               <div className="cs-note cs-note-warn">
@@ -131,8 +133,8 @@ export default function PolicyVersionPage() {
                     <ol className="cs-timeline">
                       {[...data.history].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((event) => (
                         <li key={event.id}>
-                          <strong>{event.toStatus && event.fromStatus !== event.toStatus ? `${event.fromStatus ? `${optionLabel(catalog?.policyStatuses, event.fromStatus)} → ` : ""}${optionLabel(catalog?.policyStatuses, event.toStatus)}` : label(event.action)}</strong>
-                          <small>{dateTime(event.createdAt)} · {event.actorName ?? "Sistema"}{event.actorRole ? ` (${ROLE_LABEL[event.actorRole] ?? event.actorRole})` : ""}{event.toStatus && event.fromStatus !== event.toStatus ? ` · ${label(event.action)}` : ""}</small>
+                          <strong>{eventLabel(event.action)}</strong>
+                          <small>{dateTime(event.createdAt)} · {event.actorName ?? "Sistema"}{event.actorRole ? ` (${ROLE_LABEL[event.actorRole] ?? event.actorRole})` : ""}{event.toStatus && event.fromStatus && event.fromStatus !== event.toStatus ? ` · ${optionLabel(catalog?.policyStatuses, event.fromStatus)} → ${optionLabel(catalog?.policyStatuses, event.toStatus)}` : ""}</small>
                           {event.note && <p>{event.note}</p>}
                         </li>
                       ))}
