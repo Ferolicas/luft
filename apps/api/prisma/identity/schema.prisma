@@ -16,6 +16,9 @@ enum Role {
   RISK
   FINANCE
   SUPERADMIN
+  // Roles externos (no son personal interno): aliado comercial y entidad financiera.
+  ALLY
+  INSTITUTION
 }
 
 enum UserStatus {

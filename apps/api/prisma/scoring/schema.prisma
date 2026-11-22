@@ -44,3 +44,409 @@ model ModelArtifact {
   @@unique([name, version])
 }
 
+// ---------------------------------------------------------------------------
+// Motor de políticas de entidades financieras, matching explicable, portales
+// de entidad/aliado y analítica (cosechas, resultados reales, backtesting).
+// Sin llaves foráneas hacia otros esquemas: los usuarios se cruzan por UUID.
+// ---------------------------------------------------------------------------
+
+enum InstitutionKind {
+  BANCO
+  COMPANIA_FINANCIAMIENTO
+  COOPERATIVA
+  FINTECH
+  MICROFINANCIERA
+  FONDO_EMPLEADOS
+  CAJA_COMPENSACION
+  OTRA
+}
+
+enum ProductKind {
+  LIBRE_INVERSION
+  TARJETA_CREDITO
+  VIVIENDA
+  VEHICULO
+  EDUCATIVO
+  MICROCREDITO
+  LIBRANZA
+  OTRO
+}
+
+enum PolicyStatus {
+  BORRADOR
+  REVISION
+  APROBADA
+  VIGENTE
+  SUSTITUIDA
+  SUSPENDIDA
+}
+
+enum RuleKind {
+  REQUISITO
+  EXCLUSION
+  PREFERENCIA
+}
+
+enum MatchStatus {
+  ELEGIBLE
+  CON_BRECHAS
+  EXCLUIDO
+}
+
+enum PresentationStatus {
+  AUTORIZADA
+  REVOCADA
+  PRESENTADA
+  APROBADA
+  RECHAZADA
+  DESISTIDA
+}
+
+enum OutcomeSubject {
+  LOAN
+  PRESENTATION
+}
+
+enum BacktestKind {
+  POLICY_VERSION
+  RULE_SET
+}
+
+model Institution {
+  id            String              @id @default(uuid()) @db.Uuid
+  name          String              @unique @db.VarChar(160)
+  kind          InstitutionKind
+  taxId         String?             @unique @db.VarChar(20)
+  contactName   String?             @db.VarChar(160)
+  contactEmail  String?             @db.VarChar(254)
+  contactPhone  String?             @db.VarChar(20)
+  website       String?             @db.Text
+  notes         String?             @db.Text
+  active        Boolean             @default(true)
+  createdBy     String              @db.Uuid
+  createdAt     DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime            @updatedAt @db.Timestamptz(3)
+  products      FinancialProduct[]
+  users         InstitutionUser[]
+  presentations MatchPresentation[]
+
+  @@index([active, name])
+}
+
+model FinancialProduct {
+  id                 String          @id @default(uuid()) @db.Uuid
+  institutionId      String          @db.Uuid
+  name               String          @db.VarChar(160)
+  kind               ProductKind
+  description        String?         @db.Text
+  minAmountCOP       BigInt?
+  maxAmountCOP       BigInt?
+  minTermMonths      Int?
+  maxTermMonths      Int?
+  referenceRateEA    Decimal?        @db.Decimal(8, 5)
+  guarantees         Json            @default("[]")
+  requiredDocuments  Json            @default("[]")
+  channel            String?         @db.VarChar(80)
+  commissionPercent  Decimal?        @db.Decimal(7, 5)
+  commissionNotes    String?         @db.Text
+  agreementReference String?         @db.VarChar(160)
+  active             Boolean         @default(true)
+  createdBy          String          @db.Uuid
+  createdAt          DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @db.Timestamptz(3)
+  institution        Institution     @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  versions           PolicyVersion[]
+  results            MatchResult[]
+
+  @@unique([institutionId, name])
+  @@index([active, kind])
+}
+
+model PolicyVersion {
+  id                   String               @id @default(uuid()) @db.Uuid
+  productId            String               @db.Uuid
+  version              Int
+  status               PolicyStatus         @default(BORRADOR)
+  effectiveFrom        DateTime?            @db.Date
+  effectiveTo          DateTime?            @db.Date
+  sourceDocument       String               @db.Text
+  sourceUrl            String?              @db.Text
+  notes                String?              @db.Text
+  responsibleUserId    String               @db.Uuid
+  createdBy            String               @db.Uuid
+  updatedBy            String               @db.Uuid
+  submittedBy          String?              @db.Uuid
+  submittedAt          DateTime?            @db.Timestamptz(3)
+  approvedBy           String?              @db.Uuid
+  approvedByRole       String?              @db.VarChar(20)
+  approvedAt           DateTime?            @db.Timestamptz(3)
+  approvalIndependence String?              @db.VarChar(20)
+  activatedBy          String?              @db.Uuid
+  activatedAt          DateTime?            @db.Timestamptz(3)
+  supersededById       String?              @db.Uuid
+  supersededAt         DateTime?            @db.Timestamptz(3)
+  suspendedBy          String?              @db.Uuid
+  suspendedAt          DateTime?            @db.Timestamptz(3)
+  suspensionReason     String?              @db.Text
+  clonedFromId         String?              @db.Uuid
+  createdAt            DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime             @updatedAt @db.Timestamptz(3)
+  product              FinancialProduct     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  rules                PolicyRule[]
+  events               PolicyVersionEvent[]
+  results              MatchResult[]
+
+  @@unique([productId, version])
+  @@index([status, effectiveFrom])
+}
+
+model PolicyRule {
+  id                     String        @id @default(uuid()) @db.Uuid
+  policyVersionId        String        @db.Uuid
+  position               Int
+  field                  String        @db.VarChar(60)
+  operator               String        @db.VarChar(20)
+  value                  Json
+  kind                   RuleKind
+  weight                 Int           @default(1)
+  label                  String        @db.VarChar(200)
+  internal               Boolean       @default(false)
+  exceptionAllowed       Boolean       @default(false)
+  exceptionApprovalLevel String?       @db.VarChar(20)
+  createdAt              DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime      @updatedAt @db.Timestamptz(3)
+  policyVersion          PolicyVersion @relation(fields: [policyVersionId], references: [id], onDelete: Cascade)
+
+  @@index([policyVersionId, position])
+}
+
+model PolicyVersionEvent {
+  id              String        @id @default(uuid()) @db.Uuid
+  policyVersionId String        @db.Uuid
+  action          String        @db.VarChar(40)
+  fromStatus      PolicyStatus?
+  toStatus        PolicyStatus
+  actorUserId     String        @db.Uuid
+  actorRole       String        @db.VarChar(20)
+  note            String?       @db.Text
+  metadata        Json?
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  policyVersion   PolicyVersion @relation(fields: [policyVersionId], references: [id], onDelete: Cascade)
+
+  @@index([policyVersionId, createdAt])
+}
+
+/// Datos que el usuario declara para el matching y que no existen en otro
+/// dominio (fecha de nacimiento, ciudad, inicio de actividad). Van cifrados.
+model MatchingSupplement {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @db.Uuid
+  dataCiphertext String   @db.Text
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model MatchRun {
+  id                  String        @id @default(uuid()) @db.Uuid
+  userId              String        @db.Uuid
+  engineVersion       String        @db.VarChar(40)
+  trigger             String        @default("USER") @db.VarChar(20)
+  factsCiphertext     String        @db.Text
+  factsHash           String        @db.Char(64)
+  requestedAmountCOP  BigInt?
+  requestedTermMonths Int?
+  productsEvaluated   Int           @default(0)
+  eligibleCount       Int           @default(0)
+  createdAt           DateTime      @default(now()) @db.Timestamptz(3)
+  results             MatchResult[]
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+model MatchResult {
+  id                  String             @id @default(uuid()) @db.Uuid
+  runId               String             @db.Uuid
+  userId              String             @db.Uuid
+  institutionId       String             @db.Uuid
+  productId           String             @db.Uuid
+  policyVersionId     String             @db.Uuid
+  policyVersionNumber Int
+  policyEffectiveFrom DateTime?          @db.Date
+  productSnapshot     Json
+  rulesSnapshot       Json
+  fitPercent          Int
+  status              MatchStatus
+  presentable         Boolean            @default(false)
+  explanation         Json
+  createdAt           DateTime           @default(now()) @db.Timestamptz(3)
+  run                 MatchRun           @relation(fields: [runId], references: [id], onDelete: Cascade)
+  product             FinancialProduct   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  policyVersion       PolicyVersion      @relation(fields: [policyVersionId], references: [id], onDelete: Restrict)
+  presentation        MatchPresentation?
+
+  @@unique([runId, productId])
+  @@index([userId, createdAt])
+  @@index([policyVersionId, status])
+  @@index([productId, createdAt])
+}
+
+model MatchPresentation {
+  id                    String             @id @default(uuid()) @db.Uuid
+  resultId              String             @unique @db.Uuid
+  userId                String             @db.Uuid
+  institutionId         String             @db.Uuid
+  productId             String             @db.Uuid
+  policyVersionId       String             @db.Uuid
+  status                PresentationStatus @default(AUTORIZADA)
+  authorizationVersion  String             @db.VarChar(32)
+  authorizationText     String             @db.Text
+  authorizationHash     String             @db.Char(64)
+  authorizedScope       Json
+  ipHash                String?            @db.Char(64)
+  userAgent             String?            @db.VarChar(500)
+  authorizedAt          DateTime           @default(now()) @db.Timestamptz(3)
+  sharedDataCiphertext  String?            @db.Text
+  requiresException     Boolean            @default(false)
+  exceptionApprovedBy   String?            @db.Uuid
+  exceptionApprovedRole String?            @db.VarChar(20)
+  exceptionNote         String?            @db.Text
+  revokedAt             DateTime?          @db.Timestamptz(3)
+  presentedAt           DateTime?          @db.Timestamptz(3)
+  presentedBy           String?            @db.Uuid
+  presentationChannel   String?            @db.VarChar(80)
+  presentationNote      String?            @db.Text
+  decidedAt             DateTime?          @db.Timestamptz(3)
+  decidedBy             String?            @db.Uuid
+  decidedByRole         String?            @db.VarChar(20)
+  approvedAmountCOP     BigInt?
+  approvedRateEA        Decimal?           @db.Decimal(8, 5)
+  approvedTermMonths    Int?
+  finalProductName      String?            @db.VarChar(160)
+  decisionReason        String?            @db.Text
+  createdAt             DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @db.Timestamptz(3)
+  result                MatchResult        @relation(fields: [resultId], references: [id], onDelete: Restrict)
+  institution           Institution        @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([institutionId, status, presentedAt])
+  @@index([status, createdAt])
+  @@index([productId, status])
+}
+
+model Ally {
+  id           String         @id @default(uuid()) @db.Uuid
+  name         String         @unique @db.VarChar(160)
+  taxId        String?        @unique @db.VarChar(20)
+  contactName  String?        @db.VarChar(160)
+  contactEmail String?        @db.VarChar(254)
+  contactPhone String?        @db.VarChar(20)
+  referralCode String         @unique @db.VarChar(32)
+  active       Boolean        @default(true)
+  createdBy    String         @db.Uuid
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime       @updatedAt @db.Timestamptz(3)
+  users        AllyUser[]
+  referrals    AllyReferral[]
+}
+
+/// Vínculo usuario de identidad (rol INSTITUTION) ↔ entidad financiera.
+model InstitutionUser {
+  id            String      @id @default(uuid()) @db.Uuid
+  userId        String      @unique @db.Uuid
+  institutionId String      @db.Uuid
+  createdBy     String      @db.Uuid
+  createdAt     DateTime    @default(now()) @db.Timestamptz(3)
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@index([institutionId])
+}
+
+/// Vínculo usuario de identidad (rol ALLY) ↔ aliado.
+model AllyUser {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  allyId    String   @db.Uuid
+  createdBy String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  ally      Ally     @relation(fields: [allyId], references: [id], onDelete: Cascade)
+
+  @@index([allyId])
+}
+
+/// Persona referida por un aliado. Un usuario tiene como máximo un aliado.
+model AllyReferral {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @unique @db.Uuid
+  referredByAllyId String   @db.Uuid
+  source           String   @default("STAFF") @db.VarChar(40)
+  capturedBy       String?  @db.Uuid
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  ally             Ally     @relation(fields: [referredByAllyId], references: [id], onDelete: Restrict)
+
+  @@index([referredByAllyId, createdAt])
+}
+
+/// Corte congelado de una cosecha (mes de originación × dimensión).
+model Cohort {
+  id               String   @id @default(uuid()) @db.Uuid
+  asOf             DateTime @db.Date
+  groupBy          String   @db.VarChar(20)
+  originationMonth String   @db.Char(7)
+  dimensionValue   String   @db.VarChar(80)
+  metrics          Json
+  engineVersion    String   @db.VarChar(40)
+  createdBy        String   @db.Uuid
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([asOf, groupBy, originationMonth, dimensionValue])
+  @@index([originationMonth, groupBy])
+}
+
+/// Resultado real observado de un préstamo o de una presentación a entidad.
+model Outcome {
+  id                  String         @id @default(uuid()) @db.Uuid
+  subjectType         OutcomeSubject
+  subjectId           String         @db.Uuid
+  userId              String         @db.Uuid
+  originationMonth    String?        @db.Char(7)
+  productCode         String?        @db.VarChar(80)
+  approved            Boolean?
+  amountCOP           BigInt?
+  maxDaysPastDue      Int            @default(0)
+  everDpd30           Boolean        @default(false)
+  everDpd60           Boolean        @default(false)
+  everDpd90           Boolean        @default(false)
+  installmentsDue     Int            @default(0)
+  installmentsOnTime  Int            @default(0)
+  installmentsLate    Int            @default(0)
+  installmentsPrepaid Int            @default(0)
+  writtenOff          Boolean        @default(false)
+  closed              Boolean        @default(false)
+  observedAt          DateTime       @db.Timestamptz(3)
+  createdAt           DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@unique([subjectType, subjectId])
+  @@index([userId, subjectType])
+  @@index([originationMonth])
+}
+
+model BacktestRun {
+  id                 String       @id @default(uuid()) @db.Uuid
+  kind               BacktestKind
+  label              String       @db.VarChar(160)
+  policyVersionId    String?      @db.Uuid
+  params             Json
+  paramsHash         String       @db.Char(64)
+  rulesSnapshot      Json
+  engineVersion      String       @db.VarChar(40)
+  snapshotsEvaluated Int          @default(0)
+  result             Json
+  createdBy          String       @db.Uuid
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@index([policyVersionId])
+}
