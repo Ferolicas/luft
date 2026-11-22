@@ -167,18 +167,69 @@ export function sniffMime(buffer: Buffer): string | null {
 }
 
 /**
- * Orientation only (not tax advice). Reference thresholds for natural persons,
- * taxable year 2025: UVT $49.799; gross wealth 4.500 UVT; other criteria 1.400 UVT.
+ * A versioned set of tax thresholds for one taxable year. The values live in
+ * the database (`TaxRuleVersion`); staff add and approve each year.
  */
-export const TAX_REFERENCE = {
-  taxYear: 2025,
-  uvtCOP: 49_799,
-  wealthUvt: 4_500,
-  otherUvt: 1_400,
-} as const;
+export interface TaxRule {
+  id: string;
+  taxYear: number;
+  version: number;
+  uvtCOP: number;
+  wealthUvt: number;
+  incomeUvt: number;
+  cardSpendUvt: number;
+  purchasesUvt: number;
+  depositsUvt: number;
+  sourceDocument: string;
+  effectiveFrom: string;
+}
 
-export function taxCheck(context: FinancialContext) {
-  const { uvtCOP, wealthUvt, otherUvt, taxYear } = TAX_REFERENCE;
+export const TAX_DISCLAIMER =
+  'Este diagnóstico es una orientación a partir de lo que declaraste. No es una determinación definitiva: la obligación real se confirma en la revisión con un profesional y con las reglas aplicables a tu caso.';
+
+/** The taxable year a diagnosis refers to: the last one that already closed. */
+export function targetTaxYear(now: Date = new Date()) {
+  return now.getUTCFullYear() - 1;
+}
+
+export function formatCOP(value: number) {
+  return `$${Math.round(value)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+}
+
+/**
+ * Orientation only (not tax advice). Applies the thresholds of the given rule
+ * version and explains, criterion by criterion, why a review is suggested.
+ * Without an active rule for the year nothing is evaluated.
+ */
+export function taxCheck(
+  context: FinancialContext,
+  rule: TaxRule | null,
+  taxYear: number = rule?.taxYear ?? targetTaxYear(),
+) {
+  if (!rule)
+    return {
+      taxYear,
+      uvtCOP: 0,
+      ready: false,
+      available: false,
+      mayHaveToFile: false,
+      criteria: [] as Array<{
+        key: string;
+        label: string;
+        valueCOP: number;
+        limitCOP: number;
+        limitUvt: number;
+        exceeds: boolean;
+        explanation: string;
+      }>,
+      rule: null,
+      reasons: [] as string[],
+      summary: `Aún no tenemos reglas tributarias aprobadas para el año gravable ${taxYear}. Cuando el equipo las publique evaluaremos tu caso.`,
+      disclaimer: TAX_DISCLAIMER,
+    };
+  const { uvtCOP } = rule;
   const monthlyIncome = (context.income?.sources ?? []).reduce(
     (total, row) => total + row.monthlyCOP,
     0,
@@ -190,47 +241,57 @@ export function taxCheck(context: FinancialContext) {
   const card = (context.debts?.cardSpendMonthlyCOP ?? 0) * 12;
   const spend = card + (context.debts?.fixedExpensesMonthlyCOP ?? 0) * 12;
   const income = monthlyIncome * 12;
-  const otherLimit = otherUvt * uvtCOP;
+  const uvt = (value: number) => formatCOP(value).slice(1);
   const row = (
     key: string,
     label: string,
     valueCOP: number,
-    limitCOP: number,
     limitUvt: number,
-  ) => ({
-    key,
-    label,
-    valueCOP,
-    limitCOP,
-    limitUvt,
-    exceeds: valueCOP > limitCOP,
-  });
+  ) => {
+    const limitCOP = limitUvt * uvtCOP;
+    const exceeds = valueCOP > limitCOP;
+    return {
+      key,
+      label,
+      valueCOP,
+      limitCOP,
+      limitUvt,
+      exceeds,
+      explanation: `${label}: declaraste ${formatCOP(valueCOP)} y el tope del año gravable ${rule.taxYear} es ${uvt(limitUvt)} UVT (${formatCOP(limitCOP)}, con la UVT en ${formatCOP(uvtCOP)}). ${exceeds ? 'Supera el tope, por eso sugerimos una revisión.' : 'No supera el tope.'}`,
+    };
+  };
   const criteria = [
-    row(
-      'wealth',
-      'Patrimonio bruto al 31 dic',
-      wealth,
-      wealthUvt * uvtCOP,
-      wealthUvt,
-    ),
-    row('income', 'Ingresos brutos del año', income, otherLimit, otherUvt),
-    row('card', 'Consumos con tarjeta de crédito', card, otherLimit, otherUvt),
-    row('spend', 'Compras y consumos totales', spend, otherLimit, otherUvt),
-    row(
-      'deposits',
-      'Consignaciones e inversiones',
-      income,
-      otherLimit,
-      otherUvt,
-    ),
+    row('wealth', 'Patrimonio bruto al 31 dic', wealth, rule.wealthUvt),
+    row('income', 'Ingresos brutos del año', income, rule.incomeUvt),
+    row('card', 'Consumos con tarjeta de crédito', card, rule.cardSpendUvt),
+    row('spend', 'Compras y consumos totales', spend, rule.purchasesUvt),
+    row('deposits', 'Consignaciones e inversiones', income, rule.depositsUvt),
   ];
   const ready = Boolean(context.income && context.assets && context.debts);
+  const exceeded = criteria.filter((item) => item.exceeds);
+  const mayHaveToFile = ready && exceeded.length > 0;
   return {
-    taxYear,
+    taxYear: rule.taxYear,
     uvtCOP,
     ready,
-    mayHaveToFile: ready && criteria.some((item) => item.exceeds),
+    available: true,
+    mayHaveToFile,
     criteria,
+    rule: {
+      id: rule.id,
+      taxYear: rule.taxYear,
+      version: rule.version,
+      uvtCOP,
+      sourceDocument: rule.sourceDocument,
+      effectiveFrom: rule.effectiveFrom,
+    },
+    reasons: mayHaveToFile ? exceeded.map((item) => item.explanation) : [],
+    summary: !ready
+      ? 'Completa ingresos, patrimonio y deudas en tu perfil financiero para evaluar tu caso.'
+      : mayHaveToFile
+        ? `Podrías estar obligado a declarar renta por el año gravable ${rule.taxYear}: ${exceeded.length === 1 ? 'un criterio supera' : `${exceeded.length} criterios superan`} el tope (regla v${rule.version}).`
+        : `Con lo que declaraste no superas los topes del año gravable ${rule.taxYear} (regla v${rule.version}).`,
+    disclaimer: TAX_DISCLAIMER,
   };
 }
 
@@ -250,13 +311,14 @@ export interface ProgressInput {
   documentsUploaded: number;
 }
 
+/**
+ * XP is earned only with academic courses (lessons and modules). Paying
+ * installments, activating the credit or completing the profile still unlock
+ * badges and missions, but they never add XP.
+ */
 const XP = {
   lesson: 20,
   module: 30,
-  creditActive: 50,
-  installment: 50,
-  profileBlock: 25,
-  profileComplete: 50,
 } as const;
 
 /** Level 2 starts at 200 XP, level 3 at 500 XP, then 400 XP per level. */
@@ -296,12 +358,7 @@ export function progressSummary(input: ProgressInput) {
   const next = ordered.find((row) => !['PAID', 'WAIVED'].includes(row.status));
   const profileComplete = input.profileBlocksCompleted >= 4;
   const xp =
-    input.completedLessons * XP.lesson +
-    input.completedModules * XP.module +
-    (input.creditActive ? XP.creditActive : 0) +
-    paid.filter(onTime).length * XP.installment +
-    input.profileBlocksCompleted * XP.profileBlock +
-    (profileComplete ? XP.profileComplete : 0);
+    input.completedLessons * XP.lesson + input.completedModules * XP.module;
   const level = levelFor(xp);
   const badge = (
     key: string,
@@ -412,7 +469,7 @@ export function progressSummary(input: ProgressInput) {
     {
       key: 'profile',
       title: 'Avanza en tu perfil financiero',
-      xp: XP.profileBlock,
+      xp: 0,
       done: profileComplete,
       detail: `${input.profileBlocksCompleted} de 4`,
       href: '/app/perfil/financiero',
@@ -422,7 +479,7 @@ export function progressSummary(input: ProgressInput) {
           {
             key: 'installment',
             title: `Paga tu cuota ${next.sequence} a tiempo`,
-            xp: XP.installment,
+            xp: 0,
             done: false,
             detail: `Vence el ${new Date(next.dueDate).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', timeZone: 'UTC' })}`,
             href: '/app/pagar',
@@ -442,4 +499,28 @@ export function progressSummary(input: ProgressInput) {
     badgesEarned: badges.filter((item) => item.earned).length,
     missions,
   };
+}
+
+/**
+ * Dashboard rule: when a loan still has unpaid installments, that credit is
+ * the one shown; otherwise the most recent application.
+ */
+export function pickDashboardCredit<
+  T extends {
+    createdAt: Date | string;
+    loan?: { installments: Array<{ status: string }> } | null;
+  },
+>(applications: T[]): T | null {
+  const newestFirst = [...applications].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+  return (
+    newestFirst.find((application) =>
+      application.loan?.installments.some(
+        (installment) => !['PAID', 'WAIVED'].includes(installment.status),
+      ),
+    ) ??
+    newestFirst[0] ??
+    null
+  );
 }

@@ -9,12 +9,14 @@ import { ConfigService } from '@nestjs/config';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { z } from 'zod';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { AuditService } from '../common/audit.service';
 import { CryptoService } from '../common/crypto.service';
 import { DatabaseService } from '../database/database.service';
+import { taxAnswersSchema } from '../formalization/formalization';
+import { FormalizationService } from '../formalization/formalization.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { RouteService } from '../route/route.service';
 import {
   classificationSchema,
   DOCUMENT_KINDS,
@@ -24,7 +26,7 @@ import {
   SECTION_KEYS,
   sectionSchemas,
   sniffMime,
-  taxCheck,
+  targetTaxYear,
   type Classification,
   type DocumentKind,
   type FinancialContext,
@@ -32,43 +34,19 @@ import {
   type StoredDocument,
 } from './journey';
 
-const taxAnswersSchema = z.object({
-  incomes: z
-    .array(z.enum(['SALARIO', 'HONORARIOS', 'ARRIENDOS', 'INTERESES']))
-    .max(4),
-  holdings: z
-    .array(z.enum(['VIVIENDA', 'VEHICULO', 'INVERSIONES', 'HIPOTECA']))
-    .max(4),
-  deductions: z
-    .array(
-      z.enum([
-        'PERSONAS_A_CARGO',
-        'PREPAGADA',
-        'PENSION_VOLUNTARIA',
-        'CUENTA_AFC',
-      ]),
-    )
-    .max(4),
-});
+import {
+  readJourneyState,
+  type JourneyState,
+  type TaxReturnState,
+} from './journey-state';
 
-export interface TaxReturnState {
-  taxYear: number;
-  status: 'DRAFT' | 'CONFIGURATION_REQUIRED';
-  answers?: z.infer<typeof taxAnswersSchema>;
-  requestedAt?: string;
-  updatedAt: string;
-}
+export type { JourneyState, TaxReturnState };
 
-/** Everything the journey keeps inside FinancialProfile.demographicAnswers. */
-export interface JourneyState {
-  classification?: Classification & { answeredAt: string };
-  context?: string;
-  sections?: Partial<Record<SectionKey, string>>;
-  documents?: StoredDocument[];
-  taxReturn?: TaxReturnState;
-  [legacy: string]: unknown;
-}
-
+/**
+ * Archetype codes used before V2. They are only a fallback for the credit
+ * flow when a category has no active archetypes; the versioned engine in
+ * `catalog/archetype-engine.ts` assigns the real one.
+ */
 const ARCHETYPE_BY_GOAL: Record<Classification['goal'], string> = {
   START: 'INICIADOR',
   IMPROVE_SCORE: 'CONSTRUCTOR',
@@ -83,12 +61,12 @@ export class JourneyService {
     private readonly audit: AuditService,
     private readonly realtime: RealtimeService,
     private readonly config: ConfigService,
+    private readonly formalization: FormalizationService,
+    private readonly routes: RouteService,
   ) {}
 
   static readState(value: unknown): JourneyState {
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as JourneyState)
-      : {};
+    return readJourneyState(value);
   }
 
   private async load(userId: string) {
@@ -153,28 +131,47 @@ export class JourneyService {
     const input = classificationSchema.parse(body);
     const { profile, state } = await this.load(user.id);
     state.classification = { ...input, answeredAt: new Date().toISOString() };
-    const archetype = profile?.archetype ?? ARCHETYPE_BY_GOAL[input.goal];
-    const summary = await this.save(user.id, state, {
-      archetype,
+    await this.save(user.id, state, {
       primaryGoal: input.goal,
       ...(profile?.existingHistory == null
         ? { existingHistory: input.creditExperience !== 'NONE' }
         : {}),
     });
+    // Category suggestion, archetype (with explanation) and route stage follow the classification.
+    const route = await this.routes.syncQuietly(user.id, 'classification');
+    let archetype = route?.assignment?.archetypeCode ?? profile?.archetype;
+    if (!archetype) {
+      archetype = ARCHETYPE_BY_GOAL[input.goal];
+      await this.db.luft.financialProfile.update({
+        where: { userId: user.id },
+        data: { archetype },
+      });
+    }
     await this.audit.record({
       actorUserId: user.id,
       action: 'profile.classification.saved',
       resource: 'FinancialProfile',
-      payload: { ...input, archetype, ruleVersion: 'classification-2026.11' },
+      payload: {
+        ...input,
+        archetype,
+        category: route?.route.category.code ?? null,
+        ruleVersion: route?.assignment
+          ? `archetype-v${route.assignment.archetypeVersion}`
+          : 'classification-2026.11',
+      },
     });
     this.realtime.toUser(user.id, 'profile:updated', { archetype });
-    return summary;
+    return this.journey(user);
   }
 
   async financialProfile(user: AuthenticatedUser) {
     const { state } = await this.load(user.id);
     const context = this.context(state);
-    return { ...this.summarize(state), context, taxCheck: taxCheck(context) };
+    return {
+      ...this.summarize(state),
+      context,
+      taxCheck: await this.formalization.check(context),
+    };
   }
 
   async saveSection(user: AuthenticatedUser, section: string, body: unknown) {
@@ -199,7 +196,17 @@ export class JourneyService {
     this.realtime.toUser(user.id, 'profile:updated', {
       completionPercent: summary.percent,
     });
-    return { ...summary, context, taxCheck: taxCheck(context) };
+    // New facts: re-run the tax diagnosis, then the archetype, route and evidence.
+    const diagnosis = await this.formalization.diagnoseQuietly(
+      user.id,
+      context,
+    );
+    await this.routes.syncQuietly(user.id, `profile_section:${key}`);
+    return {
+      ...summary,
+      context,
+      taxCheck: diagnosis?.check ?? (await this.formalization.check(context)),
+    };
   }
 
   private storageDir(userId: string) {
@@ -268,6 +275,7 @@ export class JourneyService {
         sha256: document.sha256,
       },
     });
+    await this.routes.syncQuietly(user.id, 'profile_document');
     return { document, ...summary };
   }
 
@@ -298,14 +306,17 @@ export class JourneyService {
       resourceId: document.id,
       payload: { kind: document.kind, sha256: document.sha256 },
     });
+    await this.routes.syncQuietly(user.id, 'profile_document');
     return summary;
   }
 
   async saveTaxAnswers(user: AuthenticatedUser, body: unknown) {
     const answers = taxAnswersSchema.parse(body);
+    // The guided preparation belongs to the formalization case of that taxable year.
+    await this.formalization.storePreparation(user.id, answers);
     const { state } = await this.load(user.id);
     state.taxReturn = {
-      taxYear: new Date().getFullYear(),
+      taxYear: targetTaxYear(),
       status: state.taxReturn?.status ?? 'DRAFT',
       requestedAt: state.taxReturn?.requestedAt,
       answers,
@@ -325,7 +336,7 @@ export class JourneyService {
     const { state } = await this.load(user.id);
     const now = new Date().toISOString();
     state.taxReturn = {
-      taxYear: state.taxReturn?.taxYear ?? new Date().getFullYear(),
+      taxYear: state.taxReturn?.taxYear ?? targetTaxYear(),
       answers: state.taxReturn?.answers,
       status: 'CONFIGURATION_REQUIRED',
       requestedAt: state.taxReturn?.requestedAt ?? now,
@@ -338,6 +349,7 @@ export class JourneyService {
       resource: 'TaxReturn',
       payload: { step, status: 'CONFIGURATION_REQUIRED' },
     });
+    await this.formalization.recordDianRequest(user.id, step).catch(() => null);
     throw new ServiceUnavailableException({
       code: 'configuration_required',
       provider: 'DIAN',

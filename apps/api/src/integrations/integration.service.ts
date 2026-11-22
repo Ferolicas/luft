@@ -34,7 +34,144 @@ export class IntegrationService {
       n8n:
         this.config.get('N8N_ENABLED') === 'true' &&
         Boolean(this.config.get('N8N_WEBHOOK_SECRET')),
+      openFinance: this.openFinanceReady(),
     };
+  }
+
+  /**
+   * Open Finance stays closed until a regulated provider is contracted and
+   * every credential, the consent endpoint and the webhook secret are loaded.
+   */
+  openFinanceReady() {
+    return (
+      this.enabled('OPENFINANCE') &&
+      [
+        'OPENFINANCE_BASE_URL',
+        'OPENFINANCE_CLIENT_SECRET',
+        'OPENFINANCE_WEBHOOK_SECRET',
+        'OPENFINANCE_CONSENT_ENDPOINT',
+      ].every((key) => Boolean(this.config.get(key)))
+    );
+  }
+
+  private async openFinanceToken() {
+    const response = await fetch(
+      new URL(
+        '/oauth/token',
+        this.config.getOrThrow<string>('OPENFINANCE_BASE_URL'),
+      ),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: this.config.getOrThrow('OPENFINANCE_CLIENT_ID'),
+          client_secret: this.config.getOrThrow('OPENFINANCE_CLIENT_SECRET'),
+        }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!response.ok)
+      throw new ServiceUnavailableException({
+        code: 'provider_auth_error',
+        provider: 'OPENFINANCE',
+      });
+    return ((await response.json()) as { access_token: string }).access_token;
+  }
+
+  /**
+   * Asks the provider for a consent the user authorizes at their own bank.
+   * LUFT never receives or stores banking passwords.
+   */
+  async startOpenFinanceConsent(input: {
+    reference: string;
+    scopes: string[];
+    expiresAt: Date;
+    institution?: string | null;
+  }) {
+    if (!this.openFinanceReady()) this.configurationRequired('OPENFINANCE');
+    const response = await fetch(
+      new URL(
+        this.config.getOrThrow<string>('OPENFINANCE_CONSENT_ENDPOINT'),
+        this.config.getOrThrow<string>('OPENFINANCE_BASE_URL'),
+      ),
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await this.openFinanceToken()}`,
+          'Content-Type': 'application/json',
+          'X-Idempotency-Key': input.reference,
+        },
+        body: JSON.stringify({
+          external_reference: input.reference,
+          permissions: input.scopes,
+          expires_at: input.expiresAt.toISOString(),
+          institution: input.institution ?? undefined,
+          redirect_url: `${this.config.getOrThrow<string>('APP_URL').replace(/\/$/, '')}/app/finanzas`,
+        }),
+        signal: AbortSignal.timeout(25_000),
+      },
+    );
+    if (!response.ok)
+      throw new ServiceUnavailableException({
+        code: 'provider_error',
+        provider: 'OPENFINANCE',
+        status: response.status,
+      });
+    const body = (await response.json()) as Record<string, unknown>;
+    const externalId = String(
+      body.consent_id ?? body.consentId ?? body.id ?? '',
+    );
+    const redirectUrl = String(
+      body.redirect_url ?? body.redirectUrl ?? body.authorization_url ?? '',
+    );
+    if (!externalId || !redirectUrl)
+      throw new ServiceUnavailableException({
+        code: 'provider_error',
+        provider: 'OPENFINANCE',
+        message: 'El proveedor no devolvió un consentimiento válido.',
+      });
+    return { externalId, redirectUrl };
+  }
+
+  async revokeOpenFinanceConsent(externalId: string) {
+    if (!this.openFinanceReady()) this.configurationRequired('OPENFINANCE');
+    const endpoint = this.config
+      .getOrThrow<string>('OPENFINANCE_CONSENT_ENDPOINT')
+      .replace(/\/$/, '');
+    const response = await fetch(
+      new URL(
+        `${endpoint}/${encodeURIComponent(externalId)}`,
+        this.config.getOrThrow<string>('OPENFINANCE_BASE_URL'),
+      ),
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${await this.openFinanceToken()}` },
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+    if (!response.ok && response.status !== 404)
+      throw new ServiceUnavailableException({
+        code: 'provider_error',
+        provider: 'OPENFINANCE',
+        status: response.status,
+      });
+  }
+
+  validateOpenFinanceWebhook(
+    signature: string | undefined,
+    rawBody: Buffer | undefined,
+  ) {
+    const secret = this.config.get<string>('OPENFINANCE_WEBHOOK_SECRET');
+    if (!secret || !signature || !rawBody)
+      throw new UnauthorizedException('Firma de webhook ausente');
+    const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
+    const actual = signature.replace(/^sha256=/i, '').trim();
+    if (
+      expected.length !== actual.length ||
+      !timingSafeEqual(Buffer.from(expected), Buffer.from(actual))
+    )
+      throw new UnauthorizedException('Firma de webhook inválida');
   }
 
   private enabled(provider: string) {
