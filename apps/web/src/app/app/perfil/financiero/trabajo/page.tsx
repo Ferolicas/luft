@@ -41,17 +41,17 @@ export default function WorkPage() {
           <Field label="Situación laboral" trailing={<Icon name="keyboard_arrow_down" />}><select value={job.situation} onChange={(event) => setJob({ ...job, situation: event.target.value })}>{SITUATIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
           <Field label="Tipo de contrato" trailing={<Icon name="keyboard_arrow_down" />}><select value={job.contractType} onChange={(event) => setJob({ ...job, contractType: event.target.value })}>{CONTRACTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
           <Field label="Ocupación o cargo" valid={job.occupation.trim().length >= 2}><input value={job.occupation} onChange={(event) => setJob({ ...job, occupation: event.target.value })} minLength={2} maxLength={120} required /></Field>
-          <Field label="Empresa donde trabajas" hint="Opcional."><input value={job.company} onChange={(event) => setJob({ ...job, company: event.target.value })} maxLength={160} /></Field>
+          <Field label="Empresa donde trabajas" optional><input value={job.company} onChange={(event) => setJob({ ...job, company: event.target.value })} maxLength={160} /></Field>
         </Card> : <Card>
           <div className="l-row between"><strong style={{ fontWeight: 500 }}>Tus fuentes de ingreso</strong><Chip tone="blue">{chosen.length} elegida{chosen.length === 1 ? "" : "s"}</Chip></div>
           <div className="l-kv">{SOURCES.map(([kind, label]) => (
-            <div key={kind} style={{ alignItems: "center" }}>
+            <div key={kind} style={{ alignItems: "center", padding: "6px 0" }}>
               <Checkbox row checked={kind in sources} onChange={(checked) => setSources((current) => { const next = { ...current }; if (checked) next[kind] = null; else delete next[kind]; return next; })}>{label}</Checkbox>
               {kind in sources && <span style={{ width: 150 }}><MoneyInput compact label={`Valor mensual de ${label}`} value={sources[kind]} onChange={(value) => setSources((current) => ({ ...current, [kind]: value }))} /></span>}
             </div>
           ))}</div>
           <div className="l-total"><span>Total al mes</span><strong>{formatCOP(total)}</strong></div>
-          <div className="l-row between"><strong style={{ fontSize: 14, fontWeight: 500 }}>¿Te descuentan retención?</strong><Chip dot>Opcional</Chip></div>
+          <strong style={{ fontSize: 14, fontWeight: 500, color: "var(--l-n-600)" }}>¿Te descuentan retención? <em className="l-optional">Opcional</em></strong>
           <Segmented label="Retención" value={withholding} onChange={setWithholding} options={[{ value: "yes", label: "Sí" }, { value: "no", label: "No" }]} />
         </Card>}
         {(error || failure) && <Alert>{error || failure}</Alert>}

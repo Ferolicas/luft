@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useLuft } from "@/components/luft/shell";
 import { Button, Card, Chip, Header, Icon, Screen, Tip } from "@/components/luft/ui";
 import { money } from "@/lib/api";
-import { paidOnTime } from "@/lib/credit";
+import { installmentsLabel, paidOnTime } from "@/lib/credit";
 import { shortDate } from "@/lib/journey";
 
 export default function HistoryPage() {
@@ -29,12 +29,12 @@ export default function HistoryPage() {
           <div className="l-stats" style={{ width: "100%" }}>
             <div><Chip tone="blue" large>{paid.length} de {loan.installments.length}</Chip><small>Cuotas pagadas</small></div>
             <div><Chip tone="amber" large icon="local_fire_department_fill">{data.progress.paymentStreak}</Chip><small>Racha de pagos</small></div>
-            <div><Chip tone="violet" large icon="diamond_fill">{data.progress.xp}</Chip><small>XP ganados</small></div>
+            <div><Chip tone="violet" large icon="workspace_premium_fill">{data.progress.badgesEarned}</Chip><small>Insignias</small></div>
           </div>
         </Card>
         <div className="l-tiles">
           <div><span className="l-icon-box sm"><Icon name="paid" size={16} /></span>Monto del crédito<strong>{money(loan.principalCOP)}</strong></div>
-          <div><span className="l-icon-box sm"><Icon name="schedule" size={16} /></span>Plazo<strong>{loan.installments.length} meses</strong></div>
+          <div><span className="l-icon-box sm"><Icon name="schedule" size={16} /></span>Plan<strong>{installmentsLabel(loan.installments.length)}</strong></div>
           <div><span className="l-icon-box sm"><Icon name="calculate" size={16} /></span>Cuotas restantes<strong>{loan.installments.length - paid.length}</strong></div>
           <div><span className="l-icon-box sm"><Icon name="trending_up" size={16} /></span>Te falta<strong>{money(loan.outstandingBalanceCOP)}</strong></div>
         </div>

@@ -10,7 +10,11 @@ import type { SessionUser } from "../app-shell";
 import { DesktopNav } from "./desktop";
 import { Alert, Icon, Loading, Screen, type IconName } from "./ui";
 
-interface LuftContext { user: SessionUser; data: DashboardData; reload: () => Promise<void>; notify: (message: string) => void }
+interface LuftContext {
+  user: SessionUser; data: DashboardData; reload: () => Promise<void>; notify: (message: string) => void;
+  /** Grows every time the server announces a new notification, so an open list can refresh itself. */
+  notificationTick: number;
+}
 const Context = createContext<LuftContext | null>(null);
 
 /** Session, dashboard data and live updates for every authenticated screen. */
@@ -43,6 +47,7 @@ const EVENT_TEXT: Record<string, string> = {
   "payment:status": "Tu pago cambió de estado.",
   "pqr:status": "Tu solicitud de ayuda tiene una actualización.",
 };
+const notificationTitle = (payload: unknown) => (payload && typeof payload === "object" && "title" in payload && typeof payload.title === "string" && payload.title.trim() ? payload.title : "Tienes una notificación nueva.");
 
 export function LuftShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -51,6 +56,7 @@ export function LuftShell({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [failure, setFailure] = useState("");
   const [toast, setToast] = useState("");
+  const [notificationTick, setNotificationTick] = useState(0);
   const reload = useCallback(async () => {
     try { setData(await api<DashboardData>("/luft/dashboard")); setFailure(""); } catch (cause) { setFailure(errorMessage(cause)); }
   }, []);
@@ -65,12 +71,14 @@ export function LuftShell({ children }: { children: React.ReactNode }) {
     if (!user) return;
     const socket: Socket = io({ path: "/socket.io", transports: ["websocket"], withCredentials: true });
     for (const [event, text] of Object.entries(EVENT_TEXT)) socket.on(event, () => { if (event !== "profile:updated") notify(text); void reload(); });
+    // Una notificación nueva actualiza el contador de la campana y la lista si está abierta.
+    socket.on("notification:new", (payload: unknown) => { notify(notificationTitle(payload)); setNotificationTick((tick) => tick + 1); void reload(); });
     return () => { socket.disconnect(); };
   }, [user, reload, notify]);
   const logout = async () => { await api("/auth/logout", { method: "POST" }).catch(() => undefined); router.push("/login"); };
   if (!user || !data) return <div className="l-shell l-shell-loading"><Screen>{failure ? <div className="l-body" style={{ paddingTop: 48 }}><Alert>{failure}</Alert><button className="l-link-button" onClick={() => window.location.reload()}>Reintentar</button></div> : <Loading label="Abriendo tu camino…" />}</Screen></div>;
   return (
-    <Context.Provider value={{ user, data, reload, notify }}>
+    <Context.Provider value={{ user, data, reload, notify, notificationTick }}>
       <div className="l-shell">
         <DesktopNav name={user.fullName} initials={initials(user.fullName)} username={user.username} openPqr={data.openPqr} onLogout={logout} />
         {toast && <div className="l-toast" role="status">{toast}</div>}

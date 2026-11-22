@@ -101,3 +101,35 @@ Adapters fail closed with `configuration_required` until real credentials and pr
 - Production runs a verified PostgreSQL custom-format backup every day at 03:17 UTC.
 - Backups live outside the application checkout in `/var/backups/luft`, are readable only by root and retain 14 days.
 - Each backup is checked with `pg_restore --list` before its temporary file becomes the final archive.
+
+## Frente web-correcciones (V2): design corrections on the PWA
+
+Applies the design team's review (`LUFT-PDF-Correcciones.pdf`, 21 pages) to the existing screens of `apps/web`. No new V2 sections were added here. Where this section and "PWA screens" disagree, this one is newer.
+
+### Visual system (`apps/web/src/app/luft.css`)
+
+- `--l-stroke: 1.5px` is the only stroke of inputs, selects, option cards, radios, checkboxes, segmented controls and the secondary button. A focused field changes its border colour only (no outline ring or halo); buttons and links keep the visible focus ring.
+- Four shadow tokens: `--l-shadow-card`, `--l-shadow-soft`, `--l-shadow-raised`, `--l-shadow-brand` (primary button). `--l-size-display: 36px` is the amount size of every state of the credit card.
+- Disabled buttons use solid colours (`--l-n-200` / `--l-n-400`), never opacity, and `.l-footer` is opaque.
+- New shared components in `components/luft/ui.tsx`: `Luft` (inline lowercase logotype, announced as "LUFT"), `Carousel` (position dots that follow the visible card; arrow keys when focused), `Staircase` (installment steps with Lufty on the current one), `Spark`, `ColombiaFlag`; `Lufty` takes `motion` (`hop`, `hop soft`, `cheer`); `Choice multiple` is a square checkbox; `Field` takes `optional` and `prefix`; `Sheet` traps focus and restores it. Every animation is covered by the global `prefers-reduced-motion` rule.
+- `components/luft/notifications.tsx`: `NotificationBell` (home header).
+- `money()` (`lib/api.ts`) formats without a space after `$`, as the design does for credit amounts; `formatCOP()` keeps the space used in the financial-profile forms.
+
+### Flows that changed
+
+- **Credit offer (`/app/credito`), six steps with a fixed plan**: 1 Abre nuevos caminos · 2 Tu plan LUFT (what the credit finances) · 3 Tu primer crédito · 4 Tu plan de N cuotas · 5 Construye tu historial · 6 Antes de aceptar. The person no longer chooses a term. Every amount, term, rate and date comes from `POST /startif/quote` (body `{ productCode: "BUILDER_1" }`, no amount or term); the application is created with `POST /startif/applications` body `{ productCode: "BUILDER_1" }`. Step 2 reads `GET /luft/plans` (Individual by default) and, if that call fails, explains the service without prices. Nothing about the product is hard-coded in the web app.
+- **Notifications on Home (`/app`)**: the bell replaces the help shortcut (help/PQR stays in Profile and in the desktop sidebar). It shows `dashboard.notificationsUnread`, opens a sheet with `GET /luft/notifications` and marks everything read with `POST /luft/notifications/read` (body `{}`). `LuftShell` listens to the `notification:new` socket event (toast, dashboard reload and refresh of an open list). A failed request shows an error with retry; an empty list shows an empty state. No sample data.
+- **XP only comes from learning**: celebrations for activating the credit and completing the financial profile, the payment history and the progress screen no longer show XP; a mission whose `xp` is 0 shows no XP chip. Lesson XP is read from the `lesson` mission of the dashboard (fallback `LESSON_XP`).
+- **Onboarding (`/empezar`)**: slides also move with swipe (pointer events, `touch-action: pan-y` so vertical scroll is untouched) and with the left/right arrow keys. The flat background circles were removed from `public/luft/onboarding-*.svg` and replaced by a soft glow in CSS.
+- **Registration**: labels "Cédula de ciudadanía", "Número de celular" (fixed +57 block with the Colombian flag, no dropdown), "Correo electrónico", "Estrato socioeconómico"; three password requirements on one line (the four API checks are unchanged).
+- **Learning**: module detail with the corrected gauge illustration (`public/luft/modulo-score.svg` without the marker), "MÓDULO n · tema" pill and course facts (topic and level per slug in `lib/lessons.ts`), lesson rows with duration and XP; end of lesson is a bottom sheet over the dimmed story; completed lesson has one button plus a text link.
+- **Financial profile**: tax-filing orientation rows aligned (label left, value right, full-width bar, limit and tag below). The sheet "Podrías tener que declarar renta" opens on "Guardar sección" when `taxCheck.mayHaveToFile` and from "Ver qué significa"; it leads to `/app/renta` or to uploading the tax return. It is an orientation, never a tax determination.
+- **Documents**: an uploaded file shows a preview (thumbnail for images, neutral page for PDFs) and Ver · Reemplazar · Eliminar. "Reemplazar" uploads the new file and then deletes the previous one (deletes first only when the three-file limit is reached). The main button goes to the next missing document.
+
+### Desktop variant
+
+Unchanged contract: the order of the children of `.l-body` on the four tab screens is the same, so the `nth-child` rules of `luft-desktop.css` still apply. Additions there: opaque footer, hidden carousel dots when the three tips are visible at once, `Staircase` height, hover states for the clickable progress card and the bell, and `br.l-br-m` (mobile-only title line breaks) hidden in the public screens.
+
+### Tests
+
+`e2e/public.spec.ts` covers the new labels, the +57 prefix, the three requirements on one line, focus without ring, the solid disabled button, and the onboarding with swipe and arrow keys. Authenticated screens were verified with Playwright against intercepted `/api/**` responses shaped like the contracts (verification scripts only; the app has no mocks).

@@ -25,5 +25,6 @@ export function errorMessage(error: unknown) {
 }
 
 export function money(value: string | number | bigint | null | undefined) {
-  return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(Number(value ?? 0));
+  const amount = Math.round(Number(value ?? 0));
+  return `${amount < 0 ? "-" : ""}$${new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 }).format(Math.abs(amount))}`;
 }
