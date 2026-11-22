@@ -151,6 +151,8 @@ Credit origination and servicing for the two builder credits. Everything lives i
 - Prepayments: an approved prepayment goes to principal, the open installments are recalculated with the same rate and gradient (same count and dates, lower value) and a prepayment that covers the balance closes the loan. Everything happens inside the webhook transaction with the loan row locked. A refund restores the saved plan when nothing changed since; otherwise the refunded principal returns to the balance and the open installments are recalculated; when there is nowhere to put the debt back the payment is flagged for manual reconciliation.
 - Default: the daily job (`daily-overdue`) marks overdue installments using Colombia's calendar day, moves a loan to `DEFAULTED` once an installment is `defaultAfterDays` overdue and back to `ACTIVE` when it has no overdue installment (also immediately when the payment webhook confirms the catch-up). Write-off is manual, with a reason, and audited.
 
+- Migración `202611220004_reprice_unsigned_applications`: las solicitudes del flujo anterior que nunca firmaron pagaré (cotización no vinculante de $1.000.000 a 6–12 meses) pasan a las condiciones del producto vigente `BUILDER_1`; lo cotizado antes queda en `CreditApplication.previousTerms`. Las firmadas, en estudio, decididas o con préstamo no se tocan.
+
 ## Frente "matching" (V2): políticas, matching, portales y analítica
 
 Módulos `apps/api/src/matching` (`MatchingModule`) y `apps/api/src/analytics` (`AnalyticsModule`). Todas las tablas viven en el esquema `scoring` (migración `202611220002_matching_analytics`); `identity` solo gana los roles `ALLY` e `INSTITUTION` (migración `202611220001_partner_roles`). Sin llaves foráneas entre esquemas.

@@ -152,6 +152,8 @@ model CreditApplication {
   usuryRateId          String?             @db.Uuid
   purpose              String              @default("SERVICIO_LUFT") @db.VarChar(80)
   purposeDescription   String?             @db.Text
+  /// Condiciones cotizadas antes de llevar la solicitud al producto vigente.
+  previousTerms        Json?
   status               CreditStatus        @default(DRAFT)
   submittedAt          DateTime?           @db.Timestamptz(3)
   decidedAt            DateTime?           @db.Timestamptz(3)
