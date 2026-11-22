@@ -101,6 +101,10 @@ export class LuftService {
     ]);
     // A loan with unpaid installments wins; otherwise the most recent application.
     const application = pickDashboardCredit(applications);
+    // Payment badges keep reflecting the last disbursed credit while a new
+    // application (without a loan yet) is the one shown.
+    const progressLoan =
+      application?.loan ?? applications.find((item) => item.loan)?.loan;
     const completedLessons = new Set(
       progress
         .filter((item) => item.completedAt)
@@ -125,8 +129,8 @@ export class LuftService {
         (item) => item.completedAt && item.completedAt.getTime() >= weekAgo,
       ).length,
       streakDays: streak?.currentDays ?? 0,
-      creditActive: Boolean(application?.loan),
-      installments: application?.loan?.installments ?? [],
+      creditActive: Boolean(progressLoan),
+      installments: progressLoan?.installments ?? [],
       profileBlocksCompleted: journey.completed,
       documentsUploaded: new Set(journey.documents.map((item) => item.kind))
         .size,

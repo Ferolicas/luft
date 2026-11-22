@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
@@ -15,6 +15,7 @@ import { HealthModule } from './health/health.module';
 import { HouseholdModule } from './household/household.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { LuftModule } from './luft/luft.module';
+import { ZodExceptionFilter } from './luft/zod-exception.filter';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OpenFinanceModule } from './openfinance/openfinance.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -49,6 +50,9 @@ import { StartifModule } from './startif/startif.module';
     AdminModule,
     HealthModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_FILTER, useClass: ZodExceptionFilter },
+  ],
 })
 export class AppModule {}
