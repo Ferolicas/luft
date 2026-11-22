@@ -35,6 +35,19 @@ The Colombian query and monthly reporting specifications are contract-gated. LUF
 - n8n receives HMAC-SHA256 signed events. Import the JSON files in `automations/n8n`, set the same `N8N_WEBHOOK_SECRET`, verify each workflow, and then set `N8N_ENABLED=true`.
 - Web Push is first-party and ships with locally generated VAPID keys stored only in the private server environment.
 
+## Open Finance
+
+Closed until a regulated provider is contracted. The adapter is provider-neutral (OAuth client credentials plus a configurable consent endpoint) and must be adjusted to the final vendor specification.
+
+- Set `OPENFINANCE_BASE_URL`, `OPENFINANCE_CLIENT_ID`, `OPENFINANCE_CLIENT_SECRET`, `OPENFINANCE_WEBHOOK_SECRET` and `OPENFINANCE_CONSENT_ENDPOINT`; `OPENFINANCE_CONSENT_DAYS` defaults to 90.
+- Configure the provider callback as `https://luft.restaurar.co/api/webhooks/open-finance` (HMAC signature in `x-openfinance-signature`).
+- `OPENFINANCE_ENABLED=true` without every credential stops the API at boot on purpose: there is no partially working mode.
+- LUFT never asks for banking passwords. Each connection records its own consent (scope, expiry, revocation); revoking the `OPEN_FINANCE` consent revokes the connections.
+
+## Tax filing (DIAN) and document extraction
+
+There is no contracted channel to file returns or to extract data from an uploaded return. The formalization flow keeps the case, supporting documents and professional review inside LUFT; filing is recorded by staff (form number and date) after it is done outside the platform, and both automated steps answer `configuration_required`.
+
 ## Activation gate
 
 For every provider, keep evidence of sandbox approval, webhook replay/idempotency, credential rotation, timeout/retry behavior, data-retention terms, processor/subprocessor agreement, incident contact, and production rollback before switching its `*_ENABLED` flag.
