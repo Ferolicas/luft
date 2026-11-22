@@ -11,6 +11,7 @@
 /* ───────── Estructura ───────── */
 .v2-cols { display: grid; gap: 16px; min-width: 0; }
 .v2-main, .v2-side { display: grid; gap: 16px; min-width: 0; align-content: start; }
+.v2-grid2 { display: grid; gap: 16px; min-width: 0; }
 .v2-section { margin-top: 4px; }
 .v2-section h2 { font-size: 18px; line-height: 24px; }
 .v2-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
