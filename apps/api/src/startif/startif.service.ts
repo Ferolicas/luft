@@ -10,14 +10,116 @@ import type { AuthenticatedUser } from '../auth/auth.types';
 import { AuditService } from '../common/audit.service';
 import { CryptoService } from '../common/crypto.service';
 import { DatabaseService } from '../database/database.service';
+import type { Prisma } from '../generated/startif/client';
 import { IntegrationService } from '../integrations/integration.service';
 import { QueueService } from '../integrations/queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
-import { geometricSchedule } from './credit-calculator';
+import {
+  geometricAmounts,
+  geometricSchedule,
+  scheduleTotals,
+} from './credit-calculator';
+import {
+  bogotaDate,
+  creditStage,
+  isInProgress,
+  isResumable,
+  isSettled,
+  openInstallmentStatus,
+} from './credit-lifecycle';
+import {
+  PrincipalOutOfRangeError,
+  productCodeSchema,
+  resolvePrincipal,
+  type CompleteTerms,
+  type ProductCode,
+} from './credit-product';
+import { CreditProductService } from './credit-product.service';
+import { lockLoan, syncLoanStatus } from './loan-sync';
 import { mercadoPagoPaymentStatus } from './payment-status';
+import {
+  planPrepayment,
+  planPrepaymentReversal,
+  toPlanRow,
+  type PlanRow,
+} from './prepayment';
+import { PROMISSORY_NOTE_VERSION, promissoryNoteText } from './promissory-note';
+import {
+  CREDIT_PURPOSES,
+  evaluateSecondCredit,
+  financialSnapshot,
+  normalizePurpose,
+  readSecondCreditPolicy,
+  type FinancialSnapshot,
+  type NormalizedPurpose,
+  type Requirement,
+} from './second-credit';
+
+type Tx = Prisma.TransactionClient;
 
 const STARTIF_CONSENT =
   'Autorizo a StartIF y LUFT para estudiar, originar y administrar mi solicitud de crédito, validar mi identidad, firmar electrónicamente el pagaré, recaudar las cuotas y reportar el comportamiento positivo o negativo a los operadores de información, conforme a la ley y a las autorizaciones entregadas.';
+
+const QUOTE_NOTE =
+  'Cuotas mensuales decrecientes. Las fechas son estimadas y se cuentan desde la activación del crédito. La tasa nunca podrá superar el límite legal vigente y se confirma antes de firmar.';
+
+/** Pagos que aún pueden completarse en el banco y se reutilizan. */
+const OPEN_PAYMENT_STATUSES = ['CREATED', 'ACTION_REQUIRED', 'PROCESSING'];
+const PAYMENT_REUSE_MS = 30 * 60_000;
+
+const CREDIT_INCLUDE = {
+  product: { select: { name: true } },
+  disbursement: true,
+  loan: {
+    include: {
+      installments: { orderBy: { sequence: 'asc' } },
+      virtualCard: true,
+    },
+  },
+  kycProcesses: {
+    orderBy: { startedAt: 'desc' },
+    take: 1,
+    select: {
+      id: true,
+      status: true,
+      verificationUrl: true,
+      failureReason: true,
+      startedAt: true,
+      completedAt: true,
+    },
+  },
+  signatures: {
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: {
+      id: true,
+      status: true,
+      documentVersion: true,
+      documentHash: true,
+      signedAt: true,
+      createdAt: true,
+    },
+  },
+} satisfies Prisma.CreditApplicationInclude;
+
+/** Resultado de procesar una notificación de pago dentro de la transacción. */
+interface PaymentOutcome {
+  idempotent: boolean;
+  credited: boolean;
+  loanClosed: boolean;
+  loanId?: string;
+  loanStatus?: string;
+  reconciliationRequired?: boolean;
+  refunded?: boolean;
+  appliedCOP?: string;
+  prepayment?: { closedLoan?: boolean; reversal?: string };
+}
+
+const NOT_CREDITED: PaymentOutcome = {
+  idempotent: false,
+  credited: false,
+  loanClosed: false,
+};
 
 @Injectable()
 export class StartifService {
@@ -28,26 +130,47 @@ export class StartifService {
     private readonly integrations: IntegrationService,
     private readonly queues: QueueService,
     private readonly realtime: RealtimeService,
+    private readonly products: CreditProductService,
   ) {}
 
-  quote(body: unknown) {
+  /**
+   * Cotiza el producto vigente. Monto, plazo, tasa y gradiente salen del
+   * producto; solo un producto con rango acepta un monto solicitado.
+   */
+  async quote(body: unknown) {
     const input = z
       .object({
-        amountCOP: z.coerce
-          .number()
-          .int()
-          .min(100_000)
-          .max(2_000_000)
-          .default(500_000),
-        termMonths: z.coerce.number().int().min(3).max(12).default(6),
+        productCode: productCodeSchema.default('BUILDER_1'),
+        amountCOP: z.coerce.number().int().positive().optional(),
       })
-      .parse(body);
+      .parse(body ?? {});
+    const { terms } = await this.products.requireActive(input.productCode);
+    const amountCOP = this.principalFor(terms, input.amountCOP);
+    const installments = geometricSchedule(
+      amountCOP,
+      terms.termMonths,
+      terms.monthlyRate,
+      terms.geometricDecrease,
+      bogotaDate(new Date()),
+    );
+    const totals = scheduleTotals(installments);
     return {
-      amountCOP: input.amountCOP,
-      termMonths: input.termMonths,
-      monthlyRate: 0.02,
-      installments: this.schedule(input.amountCOP, input.termMonths, 0.02),
-      note: 'La tasa final nunca podrá superar el límite legal vigente y se confirma antes de firmar.',
+      product: {
+        code: terms.code,
+        name: terms.name,
+        purpose: terms.purpose,
+        version: terms.version,
+      },
+      amountCOP,
+      termMonths: terms.termMonths,
+      monthlyRate: terms.monthlyRate,
+      geometricDecrease: terms.geometricDecrease,
+      firstInstallmentCOP: totals.firstInstallmentCOP,
+      lastInstallmentCOP: totals.lastInstallmentCOP,
+      totalCOP: totals.totalCOP,
+      totalInterestCOP: totals.totalInterestCOP,
+      installments,
+      note: QUOTE_NOTE,
     };
   }
 
@@ -86,18 +209,19 @@ export class StartifService {
     return consent;
   }
 
+  /**
+   * Origina una solicitud del producto vigente. El crédito 2 se bloquea si no
+   * cumple todos los requisitos de elegibilidad (`code: 'not_eligible'`).
+   */
   async createApplication(user: AuthenticatedUser, body: unknown) {
     const input = z
       .object({
-        amountCOP: z.coerce
-          .number()
-          .int()
-          .min(100_000)
-          .max(2_000_000)
-          .default(500_000),
-        termMonths: z.coerce.number().int().min(3).max(12).default(6),
+        productCode: productCodeSchema.default('BUILDER_1'),
+        purpose: z.string().trim().max(200).optional(),
+        purposeDescription: z.string().trim().max(500).optional(),
+        amountCOP: z.coerce.number().int().positive().optional(),
       })
-      .parse(body);
+      .parse(body ?? {});
     const consent = await this.db.startif.startifConsent.findFirst({
       where: {
         userId: user.id,
@@ -130,24 +254,122 @@ export class StartifService {
         code: 'profile_incomplete',
         message: 'Completa el diagnóstico financiero primero.',
       });
-    const application = await this.db.startif.creditApplication.create({
-      data: {
-        userId: user.id,
-        amountCOP: BigInt(input.amountCOP),
-        termMonths: input.termMonths,
-        requestedRateMonthly: 0.02,
-        status: 'PENDING_KYC',
-        submittedAt: new Date(),
-      },
+
+    // Una solicitud del mismo producto que aún no llega a estudio se retoma.
+    const resumable = await this.resumableApplication(
+      this.db.startif,
+      user.id,
+      input.productCode,
+    );
+    if (resumable) return this.resumed(resumable.id);
+
+    const second = input.productCode === 'BUILDER_2';
+    let purpose: NormalizedPurpose | undefined;
+    let requirements: Requirement[] | undefined;
+    if (second) {
+      purpose = normalizePurpose(input.purpose, input.purposeDescription);
+      const eligibility = await this.secondCreditEligibility(user.id, {
+        purpose,
+        amountCOP: input.amountCOP,
+      });
+      if (!eligibility.eligible)
+        throw new BadRequestException({
+          code: 'not_eligible',
+          message: 'Aún no cumples los requisitos del segundo crédito.',
+          requirements: eligibility.requirements,
+        });
+      requirements = eligibility.requirements;
+    }
+    const { row: product, terms } = await this.products.requireActive(
+      input.productCode,
+    );
+    const amountCOP = this.principalFor(terms, input.amountCOP);
+
+    const result = await this.db.startif.$transaction(async (tx) => {
+      // Serializa las solicitudes de una misma persona: dos envíos simultáneos
+      // no pueden originar dos créditos.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.id}, 0))::text AS "locked"`;
+      const again = await this.resumableApplication(
+        tx,
+        user.id,
+        input.productCode,
+      );
+      if (again) return { id: again.id, reused: true };
+      const existing = await tx.creditApplication.findMany({
+        where: { userId: user.id },
+        select: {
+          status: true,
+          productCode: true,
+          loan: { select: { id: true } },
+        },
+      });
+      if (existing.some((item) => isInProgress(item.status)))
+        throw new BadRequestException({
+          code: 'application_in_progress',
+          message:
+            'Ya tienes una solicitud o un crédito en curso. Termínalo antes de pedir otro.',
+        });
+      if (
+        terms.sequence === 1 &&
+        existing.some(
+          (item) => item.productCode === terms.code && item.loan !== null,
+        )
+      )
+        throw new BadRequestException({
+          code: 'product_already_used',
+          message: 'Ya financiaste tu servicio LUFT con este crédito.',
+        });
+      const created = await tx.creditApplication.create({
+        data: {
+          userId: user.id,
+          productId: product.id,
+          productCode: terms.code,
+          productVersion: terms.version,
+          amountCOP: BigInt(amountCOP),
+          termMonths: terms.termMonths,
+          requestedRateMonthly: product.monthlyRate,
+          geometricDecrease: product.geometricDecrease,
+          purpose: purpose?.code ?? terms.purpose,
+          purposeDescription: purpose?.description ?? null,
+          status: 'PENDING_KYC',
+          submittedAt: new Date(),
+        },
+        select: { id: true },
+      });
+      return { id: created.id, reused: false };
     });
+    if (result.reused) return this.resumed(result.id);
+    const application =
+      await this.db.startif.creditApplication.findUniqueOrThrow({
+        where: { id: result.id },
+        include: CREDIT_INCLUDE,
+      });
     await this.audit.record({
       actorUserId: user.id,
       action: 'startif.application.created',
       resource: 'CreditApplication',
       resourceId: application.id,
-      payload: { amountCOP: input.amountCOP, termMonths: input.termMonths },
+      payload: {
+        productCode: terms.code,
+        productVersion: terms.version,
+        amountCOP,
+        termMonths: terms.termMonths,
+        monthlyRate: terms.monthlyRate,
+        geometricDecrease: terms.geometricDecrease,
+        purpose: application.purpose,
+        ...(requirements
+          ? {
+              eligibility: requirements.map((item) => ({
+                code: item.code,
+                met: item.met,
+              })),
+              // El perfil financiero de LUFT se leyó bajo este consentimiento.
+              scoreShareConsentId: scoreShare.id,
+            }
+          : {}),
+      },
     });
-    return { ...application, amountCOP: application.amountCOP.toString() };
+    return this.serialize(application);
   }
 
   async startKyc(user: AuthenticatedUser, applicationId: string) {
@@ -231,6 +453,17 @@ export class StartifService {
       throw new BadRequestException(
         'La identidad debe estar validada antes de firmar.',
       );
+    if (application.status !== 'PENDING_SIGNATURE')
+      throw new BadRequestException(
+        'La solicitud no está lista para firmar el pagaré.',
+      );
+    if (
+      application.requestedRateMonthly === null ||
+      application.geometricDecrease === null
+    )
+      throw new BadRequestException(
+        'La solicitud no tiene condiciones de crédito definidas.',
+      );
     const otp = await this.db.identity.otpChallenge.findFirst({
       where: {
         id: input.challengeId,
@@ -249,18 +482,52 @@ export class StartifService {
       )
     )
       throw new BadRequestException('Código de firma inválido o vencido.');
-    const document = `PAGARÉ STARTIF ${application.id}\nCapital: COP ${application.amountCOP.toString()}\nPlazo: ${application.termMonths} meses\nEl plan definitivo y la tasa se anexan tras la aprobación, sin superar el límite legal vigente.`;
+    // El pagaré lleva el producto, las condiciones y el plan cotizado hoy.
+    const quotedOn = bogotaDate(new Date());
+    const principal = Number(application.amountCOP);
+    const monthlyRate = Number(application.requestedRateMonthly);
+    const geometricDecrease = Number(application.geometricDecrease);
+    const document = promissoryNoteText({
+      applicationId: application.id,
+      product: {
+        code: application.productCode,
+        name: application.product?.name ?? application.productCode,
+        version: application.productVersion,
+      },
+      purpose: application.purpose,
+      purposeDescription: application.purposeDescription,
+      principalCOP: principal,
+      termMonths: application.termMonths,
+      monthlyRate,
+      geometricDecrease,
+      quotedOn,
+      installments: geometricSchedule(
+        principal,
+        application.termMonths,
+        monthlyRate,
+        geometricDecrease,
+        quotedOn,
+      ),
+    });
     const envelope = await this.db.startif.$transaction(async (tx) => {
+      const claimed = await tx.creditApplication.updateMany({
+        where: { id: applicationId, status: 'PENDING_SIGNATURE' },
+        data: { status: 'PENDING_REVIEW' },
+      });
+      if (!claimed.count)
+        throw new BadRequestException(
+          'La solicitud no está lista para firmar el pagaré.',
+        );
       await this.db.identity.otpChallenge.update({
         where: { id: otp.id },
         data: { verifiedAt: new Date() },
       });
-      const created = await tx.signatureEnvelope.create({
+      return tx.signatureEnvelope.create({
         data: {
           applicationId,
           userId: user.id,
           status: 'COMPLETED',
-          documentVersion: '2026-09-01',
+          documentVersion: PROMISSORY_NOTE_VERSION,
           documentSnapshot: document,
           documentHash: this.crypto.hash(document),
           signatureCiphertext: this.crypto.encrypt(input.signatureData),
@@ -270,11 +537,6 @@ export class StartifService {
           signedAt: new Date(),
         },
       });
-      await tx.creditApplication.update({
-        where: { id: applicationId },
-        data: { status: 'PENDING_REVIEW' },
-      });
-      return created;
     });
     await this.queues.add(
       'lifecycle',
@@ -289,7 +551,16 @@ export class StartifService {
       resourceId: envelope.id,
       ip: request.ip,
       userAgent: request.get('user-agent'),
-      payload: { documentHash: envelope.documentHash, otpChallengeId: otp.id },
+      payload: {
+        documentHash: envelope.documentHash,
+        documentVersion: envelope.documentVersion,
+        otpChallengeId: otp.id,
+        productCode: application.productCode,
+        productVersion: application.productVersion,
+        principalCOP: principal,
+        monthlyRate,
+        geometricDecrease,
+      },
     });
     return {
       id: envelope.id,
@@ -315,13 +586,37 @@ export class StartifService {
     return authIssueOtp(user.id, identity.phone, 'SIGNATURE');
   }
 
+  /**
+   * Inicia un pago PSE: una cuota (`installmentId`) o un abono anticipado a
+   * capital (`kind: "PREPAYMENT"`). Nada se aplica al crédito hasta que el
+   * proveedor confirma el pago por webhook.
+   */
   async createPsePayment(user: AuthenticatedUser, body: unknown) {
+    const bankCode = z.string().trim().min(1).max(30);
     const input = z
-      .object({
-        installmentId: z.string().uuid(),
-        bankCode: z.string().trim().min(1).max(30),
-      })
+      .union([
+        z.object({
+          kind: z.literal('PREPAYMENT'),
+          loanId: z.string().uuid(),
+          amountCOP: z.coerce.number().int().positive().max(1_000_000_000),
+          bankCode,
+        }),
+        z.object({
+          kind: z.literal('INSTALLMENT').default('INSTALLMENT'),
+          installmentId: z.string().uuid(),
+          bankCode,
+        }),
+      ])
       .parse(body);
+    return input.kind === 'PREPAYMENT'
+      ? this.createPrepayment(user, input)
+      : this.createInstallmentPayment(user, input);
+  }
+
+  private async createInstallmentPayment(
+    user: AuthenticatedUser,
+    input: { installmentId: string; bankCode: string },
+  ) {
     const installment = await this.db.startif.installment.findFirst({
       where: {
         id: input.installmentId,
@@ -332,15 +627,15 @@ export class StartifService {
     });
     if (!installment)
       throw new NotFoundException('Cuota no encontrada o ya pagada.');
-    const identity = await this.db.identity.user.findUniqueOrThrow({
-      where: { id: user.id },
-    });
     const remaining = installment.amountCOP - installment.paidCOP;
     const reusable = await this.db.startif.payment.findFirst({
       where: {
+        kind: 'INSTALLMENT',
         installmentId: installment.id,
-        status: { in: ['CREATED', 'ACTION_REQUIRED', 'PROCESSING'] },
-        createdAt: { gt: new Date(Date.now() - 30 * 60_000) },
+        // Un abono posterior pudo bajar el valor de la cuota.
+        amountCOP: remaining,
+        status: { in: OPEN_PAYMENT_STATUSES as any },
+        createdAt: { gt: new Date(Date.now() - PAYMENT_REUSE_MS) },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -348,24 +643,125 @@ export class StartifService {
       return {
         ...reusable,
         amountCOP: reusable.amountCOP.toString(),
+        creditedCOP: reusable.creditedCOP.toString(),
         reused: true,
       };
+    return this.startPsePayment(user, {
+      kind: 'INSTALLMENT',
+      loanId: installment.loanId,
+      installmentId: installment.id,
+      amountCOP: remaining,
+      bankCode: input.bankCode,
+      description: `Cuota ${installment.sequence} crédito LUFT`,
+    });
+  }
+
+  private async createPrepayment(
+    user: AuthenticatedUser,
+    input: { loanId: string; amountCOP: number; bankCode: string },
+  ) {
+    const loan = await this.db.startif.loan.findFirst({
+      where: { id: input.loanId, userId: user.id },
+      include: { installments: true },
+    });
+    if (!loan) throw new NotFoundException('Crédito no encontrado.');
+    if (loan.status !== 'ACTIVE')
+      throw new BadRequestException({
+        code: 'loan_not_current',
+        message:
+          loan.status === 'COMPLETED'
+            ? 'Este crédito ya está pagado.'
+            : 'Ponte al día con tus cuotas antes de abonar a capital.',
+      });
+    const today = bogotaDate(new Date());
+    const open = loan.installments.filter((row) => !isSettled(row.status));
+    if (
+      open.some(
+        (row) =>
+          row.paidCOP > 0n ||
+          openInstallmentStatus({
+            dueDate: row.dueDate,
+            paidCOP: row.paidCOP,
+            today,
+          }) === 'OVERDUE',
+      )
+    )
+      throw new BadRequestException({
+        code: 'loan_not_current',
+        message: 'Paga primero tu cuota pendiente y luego abona a capital.',
+      });
+    const balance = loan.outstandingBalanceCOP;
+    if (balance <= 0n || !open.length)
+      throw new BadRequestException({
+        code: 'loan_not_current',
+        message: 'Este crédito no tiene saldo por abonar.',
+      });
+    const amount = BigInt(input.amountCOP);
+    if (amount > balance)
+      throw new BadRequestException({
+        code: 'prepayment_exceeds_balance',
+        message: 'El abono no puede superar tu saldo de capital.',
+        maxCOP: balance.toString(),
+      });
+    const reusable = await this.db.startif.payment.findFirst({
+      where: {
+        kind: 'PREPAYMENT',
+        loanId: loan.id,
+        amountCOP: amount,
+        status: { in: OPEN_PAYMENT_STATUSES as any },
+        createdAt: { gt: new Date(Date.now() - PAYMENT_REUSE_MS) },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (reusable)
+      return {
+        ...reusable,
+        amountCOP: reusable.amountCOP.toString(),
+        creditedCOP: reusable.creditedCOP.toString(),
+        reused: true,
+      };
+    return this.startPsePayment(user, {
+      kind: 'PREPAYMENT',
+      loanId: loan.id,
+      installmentId: null,
+      amountCOP: amount,
+      bankCode: input.bankCode,
+      description: 'Abono a capital crédito LUFT',
+    });
+  }
+
+  private async startPsePayment(
+    user: AuthenticatedUser,
+    input: {
+      kind: 'INSTALLMENT' | 'PREPAYMENT';
+      loanId: string;
+      installmentId: string | null;
+      amountCOP: bigint;
+      bankCode: string;
+      description: string;
+    },
+  ) {
+    const identity = await this.db.identity.user.findUniqueOrThrow({
+      where: { id: user.id },
+    });
     const idempotencyKey = randomUUID();
     const payment = await this.db.startif.payment.create({
       data: {
         userId: user.id,
-        installmentId: installment.id,
+        kind: input.kind,
+        loanId: input.loanId,
+        installmentId: input.installmentId,
         idempotencyKey,
-        amountCOP: remaining,
+        amountCOP: input.amountCOP,
       },
     });
     try {
       const order = await this.integrations.createPseOrder({
-        amount: Number(remaining),
+        amount: Number(input.amountCOP),
         email: identity.email,
         identification: this.crypto.decrypt(identity.documentCiphertext),
         entity: input.bankCode,
-        description: `Cuota ${installment.sequence} crédito LUFT`,
+        description: input.description,
         idempotencyKey,
       });
       const providerPayment = order.transactions?.payments?.[0] ?? {};
@@ -382,16 +778,25 @@ export class StartifService {
       });
       await this.audit.record({
         actorUserId: user.id,
-        action: 'payment.pse.created',
+        action:
+          input.kind === 'PREPAYMENT'
+            ? 'payment.prepayment.created'
+            : 'payment.pse.created',
         resource: 'Payment',
         resourceId: updated.id,
         payload: {
-          installmentId: installment.id,
-          amountCOP: remaining.toString(),
+          kind: input.kind,
+          loanId: input.loanId,
+          installmentId: input.installmentId,
+          amountCOP: input.amountCOP.toString(),
           provider: 'MERCADOPAGO',
         },
       });
-      return { ...updated, amountCOP: updated.amountCOP.toString() };
+      return {
+        ...updated,
+        amountCOP: updated.amountCOP.toString(),
+        creditedCOP: updated.creditedCOP.toString(),
+      };
     } catch (error) {
       await this.db.startif.payment.update({
         where: { id: payment.id },
@@ -440,7 +845,11 @@ export class StartifService {
       },
     });
     if (!payment) return { accepted: true, matched: false };
-    if (payment.status === 'APPROVED' && status !== 'REFUNDED')
+    // Un pago aprobado solo cambia por un reembolso; uno reembolsado es final.
+    if (
+      payment.status === 'REFUNDED' ||
+      (payment.status === 'APPROVED' && status !== 'REFUNDED')
+    )
       return { accepted: true, matched: true, idempotent: true };
     const providerAmount = Number(
       providerPayment?.amount ??
@@ -456,169 +865,66 @@ export class StartifService {
         code: 'payment_amount_mismatch',
         paymentId: payment.id,
       });
-    const result = await this.db.startif.$transaction(async (tx) => {
-      const paymentData = {
-        status,
-        approvedAt: status === 'APPROVED' ? new Date() : undefined,
-        externalId: providerExternalId,
-        providerPayloadHash: this.crypto.hash(JSON.stringify(resource)),
-        statusDetail: String(
-          providerPayment?.status_detail ??
-            resource?.status_detail ??
-            rawStatus,
-        ).slice(0, 160),
-      };
-      if (status === 'APPROVED') {
-        const claimed = await tx.payment.updateMany({
-          where: { id: payment.id, status: { not: 'APPROVED' } },
-          data: paymentData,
-        });
-        if (!claimed.count)
-          return {
-            idempotent: true,
-            loanClosed: false,
-            loanId: undefined,
-            credited: false,
-          };
-      } else if (status === 'REFUNDED') {
-        const claimed = await tx.payment.updateMany({
-          where: { id: payment.id, status: 'APPROVED' },
-          data: paymentData,
-        });
-        if (!claimed.count)
-          return {
-            idempotent: true,
-            loanClosed: false,
-            loanId: undefined,
-            credited: false,
-          };
-      } else {
-        await tx.payment.updateMany({
-          where: { id: payment.id, status: { not: 'APPROVED' } },
-          data: paymentData,
-        });
-      }
-      if (status === 'APPROVED' && payment.installmentId) {
-        const installment = await tx.installment.findUniqueOrThrow({
-          where: { id: payment.installmentId },
-        });
-        const remaining = installment.amountCOP - installment.paidCOP;
-        if (remaining <= 0n) {
-          await tx.payment.update({
-            where: { id: payment.id },
-            data: { statusDetail: 'DUPLICATE_PAYMENT_REQUIRES_RECONCILIATION' },
-          });
-          return {
-            idempotent: false,
-            loanClosed: false,
-            loanId: installment.loanId,
-            credited: false,
-            reconciliationRequired: true,
-          };
-        }
-        const credited =
-          payment.amountCOP > remaining ? remaining : payment.amountCOP;
-        const paid = installment.paidCOP + credited;
-        const paidInFull = paid >= installment.amountCOP;
-        await tx.installment.update({
-          where: { id: installment.id },
-          data: {
-            paidCOP: paid,
-            status: paidInFull ? 'PAID' : 'PARTIALLY_PAID',
-            paidAt: paidInFull ? new Date() : undefined,
-          },
-        });
-        if (paidInFull) {
-          const pending = await tx.installment.count({
-            where: {
-              loanId: installment.loanId,
-              id: { not: installment.id },
-              status: { notIn: ['PAID', 'WAIVED'] },
-            },
-          });
-          const completed = pending === 0;
-          await tx.loan.update({
-            where: { id: installment.loanId },
-            data: {
-              outstandingBalanceCOP: installment.closingBalanceCOP,
-              status: completed ? 'COMPLETED' : 'ACTIVE',
-              closedAt: completed ? new Date() : undefined,
-            },
-          });
-          if (completed) {
-            const loan = await tx.loan.findUniqueOrThrow({
-              where: { id: installment.loanId },
-            });
-            await tx.creditApplication.update({
-              where: { id: loan.applicationId },
-              data: { status: 'COMPLETED' },
-            });
-          }
-          return {
-            idempotent: false,
-            loanClosed: completed,
-            loanId: installment.loanId,
-            credited: true,
-            reconciliationRequired: payment.amountCOP > remaining,
-          };
-        }
-      }
-      if (status === 'REFUNDED' && payment.installmentId) {
-        const installment = await tx.installment.findUniqueOrThrow({
-          where: { id: payment.installmentId },
-          include: { loan: true },
-        });
-        const paid =
-          installment.paidCOP > payment.amountCOP
-            ? installment.paidCOP - payment.amountCOP
-            : 0n;
-        const today = new Date(new Date().toISOString().slice(0, 10));
-        const reopenedStatus =
-          paid > 0n
-            ? 'PARTIALLY_PAID'
-            : installment.dueDate < today
-              ? 'OVERDUE'
-              : 'PENDING';
-        await tx.installment.update({
-          where: { id: installment.id },
-          data: { paidCOP: paid, paidAt: null, status: reopenedStatus },
-        });
-        await tx.loan.update({
-          where: { id: installment.loanId },
-          data: {
-            status: 'ACTIVE',
-            closedAt: null,
-            outstandingBalanceCOP:
-              installment.openingBalanceCOP >
-              installment.loan.outstandingBalanceCOP
-                ? installment.openingBalanceCOP
-                : installment.loan.outstandingBalanceCOP,
-          },
-        });
-        await tx.creditApplication.update({
-          where: { id: installment.loan.applicationId },
-          data: { status: 'ACTIVE' },
-        });
-        return {
-          idempotent: false,
-          loanClosed: false,
-          loanId: installment.loanId,
-          credited: false,
-          refunded: true,
+    const now = new Date();
+    const result = await this.db.startif.$transaction(
+      async (tx): Promise<PaymentOutcome> => {
+        const paymentData = {
+          status,
+          approvedAt: status === 'APPROVED' ? now : undefined,
+          externalId: providerExternalId,
+          providerPayloadHash: this.crypto.hash(JSON.stringify(resource)),
+          statusDetail: String(
+            providerPayment?.status_detail ??
+              resource?.status_detail ??
+              rawStatus,
+          ).slice(0, 160),
         };
-      }
-      return {
-        idempotent: false,
-        loanClosed: false,
-        loanId: undefined,
-        credited: false,
-      };
-    });
+        if (status === 'APPROVED') {
+          // Solo una confirmación gana; las repetidas no vuelven a aplicar.
+          const claimed = await tx.payment.updateMany({
+            where: {
+              id: payment.id,
+              status: { notIn: ['APPROVED', 'REFUNDED'] },
+            },
+            data: paymentData,
+          });
+          if (!claimed.count) return { ...NOT_CREDITED, idempotent: true };
+          if (payment.kind === 'PREPAYMENT')
+            return this.applyPrepayment(tx, payment, now);
+          if (payment.installmentId)
+            return this.applyInstallmentPayment(tx, payment, now);
+          return NOT_CREDITED;
+        }
+        if (status === 'REFUNDED') {
+          const claimed = await tx.payment.updateMany({
+            where: { id: payment.id, status: 'APPROVED' },
+            data: paymentData,
+          });
+          if (!claimed.count) return { ...NOT_CREDITED, idempotent: true };
+          if (payment.kind === 'PREPAYMENT')
+            return this.reversePrepayment(tx, payment, now);
+          if (payment.installmentId)
+            return this.reverseInstallmentPayment(tx, payment, now);
+          return { ...NOT_CREDITED, refunded: true };
+        }
+        await tx.payment.updateMany({
+          where: {
+            id: payment.id,
+            status: { notIn: ['APPROVED', 'REFUNDED'] },
+          },
+          data: paymentData,
+        });
+        return NOT_CREDITED;
+      },
+    );
     if (result.idempotent)
       return { accepted: true, matched: true, idempotent: true };
     this.realtime.toUser(payment.userId, 'payment:status', {
       paymentId: payment.id,
+      kind: payment.kind,
       status,
+      loanId: result.loanId,
+      loanStatus: result.loanStatus,
     });
     if (status === 'APPROVED' && result.credited)
       await this.queues.add(
@@ -633,20 +939,30 @@ export class StartifService {
           ? 'payment.refunded'
           : 'payment.reconciliation_required',
         paymentId: payment.id,
+        kind: payment.kind,
         userId: payment.userId,
         loanId: result.loanId,
+        reversal: result.prepayment?.reversal,
       });
     await this.audit.record({
       actorRole: 'SYSTEM',
       action: result.refunded
         ? 'payment.refunded'
-        : 'payment.webhook.processed',
+        : payment.kind === 'PREPAYMENT' && result.credited
+          ? 'payment.prepayment.applied'
+          : 'payment.webhook.processed',
       resource: 'Payment',
       resourceId: payment.id,
       payload: {
         provider: 'MERCADOPAGO',
+        kind: payment.kind,
         status,
         credited: result.credited,
+        appliedCOP: result.appliedCOP ?? null,
+        loanId: result.loanId ?? null,
+        loanStatus: result.loanStatus ?? null,
+        loanClosed: result.loanClosed,
+        prepayment: result.prepayment ?? null,
         reconciliationRequired: Boolean(result.reconciliationRequired),
         providerPayloadHash: this.crypto.hash(JSON.stringify(resource)),
       },
@@ -676,6 +992,275 @@ export class StartifService {
       }
     }
     return { accepted: true, matched: true };
+  }
+
+  /** Aplica a su cuota un pago aprobado. */
+  private async applyInstallmentPayment(
+    tx: Tx,
+    payment: { id: string; installmentId: string | null; amountCOP: bigint },
+    now: Date,
+  ): Promise<PaymentOutcome> {
+    const { loanId } = await tx.installment.findUniqueOrThrow({
+      where: { id: payment.installmentId as string },
+      select: { loanId: true },
+    });
+    await lockLoan(tx, loanId);
+    const installment = await tx.installment.findUniqueOrThrow({
+      where: { id: payment.installmentId as string },
+    });
+    const remaining = installment.amountCOP - installment.paidCOP;
+    if (remaining <= 0n || isSettled(installment.status)) {
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: { statusDetail: 'DUPLICATE_PAYMENT_REQUIRES_RECONCILIATION' },
+      });
+      return { ...NOT_CREDITED, loanId, reconciliationRequired: true };
+    }
+    const credited =
+      payment.amountCOP > remaining ? remaining : payment.amountCOP;
+    const paid = installment.paidCOP + credited;
+    const paidInFull = paid >= installment.amountCOP;
+    await tx.installment.update({
+      where: { id: installment.id },
+      data: {
+        paidCOP: paid,
+        status: paidInFull ? 'PAID' : 'PARTIALLY_PAID',
+        paidAt: paidInFull ? now : undefined,
+      },
+    });
+    await tx.payment.update({
+      where: { id: payment.id },
+      data: { creditedCOP: credited, loanId },
+    });
+    const synced = await syncLoanStatus(tx, loanId, now);
+    return {
+      idempotent: false,
+      credited: true,
+      loanClosed: synced.closed,
+      loanId,
+      loanStatus: synced.status,
+      appliedCOP: credited.toString(),
+      reconciliationRequired: payment.amountCOP > remaining,
+    };
+  }
+
+  /** Revierte lo que un pago de cuota había aplicado. */
+  private async reverseInstallmentPayment(
+    tx: Tx,
+    payment: { id: string; installmentId: string | null },
+    now: Date,
+  ): Promise<PaymentOutcome> {
+    const { loanId } = await tx.installment.findUniqueOrThrow({
+      where: { id: payment.installmentId as string },
+      select: { loanId: true },
+    });
+    await lockLoan(tx, loanId);
+    const installment = await tx.installment.findUniqueOrThrow({
+      where: { id: payment.installmentId as string },
+    });
+    const fresh = await tx.payment.findUniqueOrThrow({
+      where: { id: payment.id },
+    });
+    // Un duplicado enviado a conciliación nunca se aplicó: no hay qué revertir.
+    if (fresh.creditedCOP <= 0n)
+      return { ...NOT_CREDITED, loanId, refunded: true };
+    const paid =
+      installment.paidCOP > fresh.creditedCOP
+        ? installment.paidCOP - fresh.creditedCOP
+        : 0n;
+    await tx.installment.update({
+      where: { id: installment.id },
+      data: {
+        paidCOP: paid,
+        paidAt: null,
+        status: openInstallmentStatus({
+          dueDate: installment.dueDate,
+          paidCOP: paid,
+          today: bogotaDate(now),
+        }),
+      },
+    });
+    await tx.payment.update({
+      where: { id: payment.id },
+      data: { creditedCOP: 0n },
+    });
+    const synced = await syncLoanStatus(tx, loanId, now);
+    return {
+      ...NOT_CREDITED,
+      loanId,
+      loanStatus: synced.status,
+      refunded: true,
+      appliedCOP: fresh.creditedCOP.toString(),
+    };
+  }
+
+  /**
+   * Abono anticipado aprobado: reduce el capital, recalcula las cuotas
+   * pendientes y guarda el plan anterior para poder revertirlo.
+   */
+  private async applyPrepayment(
+    tx: Tx,
+    payment: {
+      id: string;
+      userId: string;
+      loanId: string | null;
+      amountCOP: bigint;
+    },
+    now: Date,
+  ): Promise<PaymentOutcome> {
+    const loanId = payment.loanId as string;
+    await lockLoan(tx, loanId);
+    const loan = await tx.loan.findUniqueOrThrow({
+      where: { id: loanId },
+      include: { installments: { orderBy: { sequence: 'asc' } } },
+    });
+    const plan = planPrepayment({
+      installments: loan.installments.map(toPlanRow),
+      prepaymentCOP: Number(payment.amountCOP),
+      monthlyRate: Number(loan.monthlyRate),
+      geometricDecrease: Number(loan.geometricDecrease),
+      now,
+    });
+    if (plan.outcome !== 'APPLIED') {
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          statusDetail:
+            plan.outcome === 'NO_BALANCE'
+              ? 'PREPAYMENT_WITHOUT_BALANCE_REQUIRES_RECONCILIATION'
+              : 'PREPAYMENT_ON_PARTIAL_INSTALLMENT_REQUIRES_RECONCILIATION',
+        },
+      });
+      return { ...NOT_CREDITED, loanId, reconciliationRequired: true };
+    }
+    await tx.loanPrepayment.create({
+      data: {
+        loanId,
+        paymentId: payment.id,
+        userId: payment.userId,
+        amountCOP: payment.amountCOP,
+        appliedCOP: BigInt(plan.appliedCOP),
+        balanceBeforeCOP: BigInt(plan.balanceBeforeCOP),
+        balanceAfterCOP: BigInt(plan.balanceAfterCOP),
+        loanStatusBefore: loan.status,
+        closedLoan: plan.closesLoan,
+        previousPlan: plan.previousPlan as unknown as Prisma.InputJsonValue,
+        newPlan: plan.newPlan as unknown as Prisma.InputJsonValue,
+        appliedAt: now,
+      },
+    });
+    await this.writePlan(tx, plan.newPlan);
+    await tx.payment.update({
+      where: { id: payment.id },
+      data: {
+        creditedCOP: BigInt(plan.appliedCOP),
+        ...(plan.excessCOP > 0
+          ? { statusDetail: 'PREPAYMENT_EXCESS_REQUIRES_RECONCILIATION' }
+          : {}),
+      },
+    });
+    const synced = await syncLoanStatus(tx, loanId, now);
+    return {
+      idempotent: false,
+      credited: true,
+      loanClosed: synced.closed,
+      loanId,
+      loanStatus: synced.status,
+      appliedCOP: String(plan.appliedCOP),
+      reconciliationRequired: plan.excessCOP > 0,
+      prepayment: { closedLoan: plan.closesLoan },
+    };
+  }
+
+  /** Reembolso de un abono: repone el capital sin corromper el plan. */
+  private async reversePrepayment(
+    tx: Tx,
+    payment: { id: string; loanId: string | null },
+    now: Date,
+  ): Promise<PaymentOutcome> {
+    const loanId = payment.loanId as string;
+    await lockLoan(tx, loanId);
+    const record = await tx.loanPrepayment.findUnique({
+      where: { paymentId: payment.id },
+    });
+    // El abono nunca se aplicó (quedó en conciliación): no hay plan que reponer.
+    if (!record || record.reversedAt)
+      return { ...NOT_CREDITED, loanId, refunded: true };
+    const loan = await tx.loan.findUniqueOrThrow({
+      where: { id: loanId },
+      include: { installments: { orderBy: { sequence: 'asc' } } },
+    });
+    const laterPrepayments = await tx.loanPrepayment.count({
+      where: {
+        loanId,
+        reversedAt: null,
+        id: { not: record.id },
+        appliedAt: { gte: record.appliedAt },
+      },
+    });
+    const reversal = planPrepaymentReversal({
+      previousPlan: record.previousPlan as unknown as PlanRow[],
+      newPlan: record.newPlan as unknown as PlanRow[],
+      current: loan.installments.map(toPlanRow),
+      appliedCOP: Number(record.appliedCOP),
+      laterPrepayments,
+      monthlyRate: Number(loan.monthlyRate),
+      geometricDecrease: Number(loan.geometricDecrease),
+      today: bogotaDate(now),
+    });
+    if (reversal.mode === 'MANUAL_REVIEW') {
+      await tx.loanPrepayment.update({
+        where: { id: record.id },
+        data: { reversalMode: reversal.mode },
+      });
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: { statusDetail: 'PREPAYMENT_REFUND_REQUIRES_RECONCILIATION' },
+      });
+      return {
+        ...NOT_CREDITED,
+        loanId,
+        loanStatus: loan.status,
+        refunded: true,
+        reconciliationRequired: true,
+        prepayment: { reversal: reversal.mode },
+      };
+    }
+    await this.writePlan(tx, reversal.installments);
+    await tx.loanPrepayment.update({
+      where: { id: record.id },
+      data: { reversedAt: now, reversalMode: reversal.mode },
+    });
+    await tx.payment.update({
+      where: { id: payment.id },
+      data: { creditedCOP: 0n },
+    });
+    const synced = await syncLoanStatus(tx, loanId, now);
+    return {
+      ...NOT_CREDITED,
+      loanId,
+      loanStatus: synced.status,
+      refunded: true,
+      appliedCOP: record.appliedCOP.toString(),
+      prepayment: { reversal: reversal.mode },
+    };
+  }
+
+  private async writePlan(tx: Tx, rows: PlanRow[]) {
+    for (const row of rows)
+      await tx.installment.update({
+        where: { id: row.id },
+        data: {
+          openingBalanceCOP: BigInt(row.openingBalanceCOP),
+          amountCOP: BigInt(row.amountCOP),
+          principalCOP: BigInt(row.principalCOP),
+          interestCOP: BigInt(row.interestCOP),
+          closingBalanceCOP: BigInt(row.closingBalanceCOP),
+          paidCOP: BigInt(row.paidCOP),
+          status: row.status as any,
+          paidAt: row.paidAt ? new Date(row.paidAt) : null,
+        },
+      });
   }
 
   async webhookTruora(
@@ -714,15 +1299,15 @@ export class StartifService {
           completedAt: status === 'COMPLETED' ? new Date() : undefined,
         },
       }),
-      this.db.startif.creditApplication.update({
-        where: { id: process.applicationId },
+      // Una notificación tardía no puede devolver una solicitud que ya firmó,
+      // está en estudio o tiene crédito.
+      this.db.startif.creditApplication.updateMany({
+        where: {
+          id: process.applicationId,
+          status: { in: ['PENDING_KYC', 'CONFIGURATION_REQUIRED'] },
+        },
         data: {
-          status:
-            status === 'COMPLETED'
-              ? 'PENDING_SIGNATURE'
-              : status === 'FAILED'
-                ? 'PENDING_KYC'
-                : 'PENDING_KYC',
+          status: status === 'COMPLETED' ? 'PENDING_SIGNATURE' : 'PENDING_KYC',
         },
       }),
     ]);
@@ -740,23 +1325,156 @@ export class StartifService {
     return { accepted: true, matched: true };
   }
 
+  /** Solicitud o crédito más reciente de la persona. */
   async credit(user: AuthenticatedUser) {
     const application = await this.db.startif.creditApplication.findFirst({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
-      include: {
-        loan: {
-          include: {
-            installments: { orderBy: { sequence: 'asc' } },
-            virtualCard: true,
-          },
-        },
-        kycProcesses: { orderBy: { startedAt: 'desc' }, take: 1 },
-        signatures: { orderBy: { createdAt: 'desc' }, take: 1 },
-      },
+      include: CREDIT_INCLUDE,
     });
     if (!application) return null;
     return this.serialize(application);
+  }
+
+  /**
+   * Todos los créditos de la persona (del más antiguo al más reciente) y la
+   * elegibilidad explicada del crédito 2. La finalidad se evalúa solo si llega.
+   */
+  async credits(user: AuthenticatedUser, query: unknown) {
+    const input = z
+      .object({
+        purpose: z.string().trim().max(200).optional(),
+        purposeDescription: z.string().trim().max(500).optional(),
+        amountCOP: z.coerce.number().int().positive().optional(),
+      })
+      .parse(query ?? {});
+    const [applications, second] = await Promise.all([
+      this.db.startif.creditApplication.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'asc' },
+        include: CREDIT_INCLUDE,
+      }),
+      this.secondCreditEligibility(user.id, {
+        purpose:
+          input.purpose === undefined
+            ? undefined
+            : normalizePurpose(input.purpose, input.purposeDescription),
+        amountCOP: input.amountCOP,
+      }),
+    ]);
+    return {
+      credits: applications.map((item) => this.serialize(item)),
+      second: { ...second, purposes: CREDIT_PURPOSES },
+    };
+  }
+
+  /**
+   * Evalúa los requisitos del crédito 2 para una persona. Lee el perfil
+   * financiero de LUFT solo si el consentimiento SCORE_SHARE_WITH_STARTIF está
+   * vigente. No decide el crédito: la decisión final es del rol RISK.
+   */
+  async secondCreditEligibility(
+    userId: string,
+    options: {
+      purpose?: NormalizedPurpose;
+      amountCOP?: number;
+      /** Solicitud que se está estudiando: no cuenta como "otra en curso". */
+      excludeApplicationId?: string;
+    } = {},
+  ) {
+    const code: ProductCode = 'BUILDER_2';
+    const [active, latest, applications, finances] = await Promise.all([
+      this.products.active(code),
+      this.products.latest(code),
+      this.db.startif.creditApplication.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          productCode: true,
+          loan: {
+            select: {
+              status: true,
+              installments: {
+                select: { status: true, dueDate: true, paidAt: true },
+              },
+            },
+          },
+        },
+      }),
+      this.financialSnapshotFor(userId),
+    ]);
+    const terms = active?.terms ?? null;
+    const principal = terms
+      ? this.principalFor(terms, options.amountCOP)
+      : null;
+    const amounts =
+      terms && principal !== null
+        ? geometricAmounts(
+            principal,
+            terms.termMonths,
+            terms.monthlyRate,
+            terms.geometricDecrease,
+          )
+        : null;
+    const first = applications.find(
+      (item) => item.productCode === 'BUILDER_1' && item.loan,
+    );
+    const result = evaluateSecondCredit({
+      product:
+        principal !== null && amounts
+          ? {
+              principalCOP: principal,
+              highestInstallmentCOP: Math.max(
+                ...amounts.map((row) => row.amountCOP),
+              ),
+            }
+          : null,
+      policy: readSecondCreditPolicy(
+        (active?.row ?? latest)?.requirements ?? null,
+      ),
+      firstCredit: first?.loan
+        ? {
+            status: first.loan.status,
+            installments: first.loan.installments.map((row) => ({
+              status: row.status,
+              dueDate: row.dueDate,
+              paidOn: row.paidAt ? bogotaDate(row.paidAt) : null,
+            })),
+          }
+        : null,
+      purpose: options.purpose,
+      finances,
+      otherStatuses: applications
+        .filter((item) => item.id !== options.excludeApplicationId)
+        .map((item) => item.status),
+      today: bogotaDate(new Date()),
+    });
+    const totals = amounts ? scheduleTotals(amounts) : null;
+    return {
+      product:
+        terms && principal !== null && totals
+          ? {
+              code: terms.code,
+              name: terms.name,
+              purpose: terms.purpose,
+              version: terms.version,
+              amountCOP: principal,
+              minAmountCOP: terms.minPrincipalCOP ?? principal,
+              maxAmountCOP: terms.maxPrincipalCOP ?? principal,
+              termMonths: terms.termMonths,
+              monthlyRate: terms.monthlyRate,
+              geometricDecrease: terms.geometricDecrease,
+              firstInstallmentCOP: totals.firstInstallmentCOP,
+              lastInstallmentCOP: totals.lastInstallmentCOP,
+              totalCOP: totals.totalCOP,
+              totalInterestCOP: totals.totalInterestCOP,
+            }
+          : null,
+      eligible: result.eligible,
+      requirements: result.requirements,
+    };
   }
 
   async createPqr(user: AuthenticatedUser, body: unknown) {
@@ -802,36 +1520,132 @@ export class StartifService {
     });
   }
 
-  schedule(principal: number, months: number, monthlyRate: number) {
-    return geometricSchedule(principal, months, monthlyRate);
+  /** Plan de cuotas con las condiciones propias de una operación. */
+  schedule(
+    principal: number,
+    months: number,
+    monthlyRate: number,
+    geometricDecrease: number,
+    startDate: Date | string,
+  ) {
+    return geometricSchedule(
+      principal,
+      months,
+      monthlyRate,
+      geometricDecrease,
+      startDate,
+    );
+  }
+
+  private principalFor(terms: CompleteTerms, requestedCOP?: number) {
+    try {
+      return resolvePrincipal(terms, requestedCOP);
+    } catch (error) {
+      if (error instanceof PrincipalOutOfRangeError)
+        throw new BadRequestException({
+          code: 'amount_out_of_range',
+          message: 'El monto está fuera del rango del producto.',
+          minCOP: error.minCOP,
+          maxCOP: error.maxCOP,
+        });
+      throw error;
+    }
+  }
+
+  /** Ingresos, gastos y deudas declarados en LUFT, solo con consentimiento. */
+  private async financialSnapshotFor(
+    userId: string,
+  ): Promise<FinancialSnapshot> {
+    const consent = await this.db.luft.consent.findFirst({
+      where: { userId, kind: 'SCORE_SHARE_WITH_STARTIF', revokedAt: null },
+      select: { id: true },
+    });
+    if (!consent) return financialSnapshot(false, null);
+    const profile = await this.db.luft.financialProfile.findUnique({
+      where: { userId },
+      select: { demographicAnswers: true },
+    });
+    const state = profile?.demographicAnswers;
+    const ciphertext =
+      state && typeof state === 'object' && !Array.isArray(state)
+        ? (state as Record<string, unknown>).context
+        : undefined;
+    if (typeof ciphertext !== 'string') return financialSnapshot(true, null);
+    try {
+      return financialSnapshot(
+        true,
+        JSON.parse(this.crypto.decrypt(ciphertext)),
+      );
+    } catch {
+      return financialSnapshot(true, null);
+    }
+  }
+
+  private resumableApplication(
+    client: Pick<Tx, 'creditApplication'>,
+    userId: string,
+    productCode: string,
+  ) {
+    return client.creditApplication
+      .findMany({
+        where: { userId, productCode },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, status: true },
+      })
+      .then((rows) => rows.find((row) => isResumable(row.status)) ?? null);
+  }
+
+  private async resumed(applicationId: string) {
+    const application =
+      await this.db.startif.creditApplication.findUniqueOrThrow({
+        where: { id: applicationId },
+        include: CREDIT_INCLUDE,
+      });
+    return { ...this.serialize(application), reused: true };
   }
 
   private async ownedApplication(userId: string, applicationId: string) {
     const application = await this.db.startif.creditApplication.findFirst({
       where: { id: applicationId, userId },
+      include: { product: { select: { name: true } } },
     });
     if (!application) throw new NotFoundException('Solicitud no encontrada.');
     return application;
   }
 
-  private serialize(application: any) {
+  /** Convierte montos BigInt a texto y agrega la etapa del crédito. */
+  serialize(application: any) {
+    const { product, ...rest } = application;
+    const signatures: Array<{ status: string }> | undefined = rest.signatures;
     return {
-      ...application,
-      amountCOP: application.amountCOP.toString(),
-      loan: application.loan
+      ...rest,
+      productName: product?.name ?? null,
+      stage: creditStage({
+        status: rest.status,
+        signed: signatures
+          ? signatures.some((item) => item.status === 'COMPLETED')
+          : undefined,
+        disbursed: rest.disbursement?.status === 'COMPLETED',
+      }),
+      amountCOP: rest.amountCOP.toString(),
+      disbursement: rest.disbursement
         ? {
-            ...application.loan,
-            principalCOP: application.loan.principalCOP.toString(),
-            outstandingBalanceCOP:
-              application.loan.outstandingBalanceCOP.toString(),
-            virtualCard: application.loan.virtualCard
+            ...rest.disbursement,
+            amountCOP: rest.disbursement.amountCOP.toString(),
+          }
+        : null,
+      loan: rest.loan
+        ? {
+            ...rest.loan,
+            principalCOP: rest.loan.principalCOP.toString(),
+            outstandingBalanceCOP: rest.loan.outstandingBalanceCOP.toString(),
+            virtualCard: rest.loan.virtualCard
               ? {
-                  ...application.loan.virtualCard,
-                  fixedLimitCOP:
-                    application.loan.virtualCard.fixedLimitCOP.toString(),
+                  ...rest.loan.virtualCard,
+                  fixedLimitCOP: rest.loan.virtualCard.fixedLimitCOP.toString(),
                 }
               : null,
-            installments: application.loan.installments.map((row: any) => ({
+            installments: (rest.loan.installments ?? []).map((row: any) => ({
               ...row,
               openingBalanceCOP: row.openingBalanceCOP.toString(),
               amountCOP: row.amountCOP.toString(),

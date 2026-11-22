@@ -7,6 +7,7 @@ import {
   Post,
   Query,
   Req,
+  UseFilters,
   UseGuards,
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
@@ -16,9 +17,11 @@ import { CurrentUser } from '../auth/auth.decorators';
 import { AuthGuard } from '../auth/auth.guard';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { StartifService } from './startif.service';
+import { ZodExceptionFilter } from './zod-exception.filter';
 
 @Controller('startif')
 @UseGuards(AuthGuard)
+@UseFilters(ZodExceptionFilter)
 export class StartifController {
   constructor(
     private readonly startif: StartifService,
@@ -66,6 +69,12 @@ export class StartifController {
   }
   @Get('credit') credit(@CurrentUser() user: AuthenticatedUser) {
     return this.startif.credit(user);
+  }
+  @Get('credits') credits(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: unknown,
+  ) {
+    return this.startif.credits(user, query);
   }
   @Post('payments/pse') payment(
     @CurrentUser() user: AuthenticatedUser,

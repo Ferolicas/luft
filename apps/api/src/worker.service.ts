@@ -7,9 +7,40 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Job, Queue, Worker } from 'bullmq';
 import webPush from 'web-push';
+import { AuditService } from './common/audit.service';
 import { CryptoService } from './common/crypto.service';
 import { DatabaseService } from './database/database.service';
 import { IntegrationService } from './integrations/integration.service';
+import {
+  bogotaDate,
+  daysOverdue,
+  isSettled,
+  openInstallmentStatus,
+  resolveLoanStatus,
+} from './startif/credit-lifecycle';
+import { lockLoan, syncLoanStatus } from './startif/loan-sync';
+
+/** Textos de las notificaciones de crédito, por nombre del job. */
+const CREDIT_NOTICES: Record<
+  string,
+  { subject: string; body: string; push: string }
+> = {
+  'credit-approved': {
+    subject: 'Tu crédito LUFT fue aprobado',
+    body: 'Tu ruta StartIF fue aprobada. Revisa tu plan y tarjeta virtual.',
+    push: 'Tu ruta de crédito tiene una actualización.',
+  },
+  'credit-approved-transfer': {
+    subject: 'Tu crédito LUFT fue aprobado',
+    body: 'Tu crédito fue aprobado. Te avisaremos cuando se registre el desembolso; desde esa fecha empieza tu plan de cuotas.',
+    push: 'Tu crédito fue aprobado. Falta el desembolso.',
+  },
+  'credit-disbursed': {
+    subject: 'Registramos el desembolso de tu crédito LUFT',
+    body: 'Tu crédito ya está vigente. Ingresa a LUFT para revisar tu plan de cuotas.',
+    push: 'Tu crédito ya está vigente. Revisa tu plan de cuotas.',
+  },
+};
 
 @Injectable()
 export class WorkerService implements OnModuleInit, OnModuleDestroy {
@@ -21,6 +52,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly crypto: CryptoService,
     private readonly integrations: IntegrationService,
     private readonly config: ConfigService,
+    private readonly audit: AuditService,
   ) {}
 
   onModuleInit() {
@@ -161,41 +193,75 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
         where: { id: paymentId },
         include: { installment: true },
       });
-      if (!payment.installment) return;
+      // Un abono anticipado no tiene cuota: el préstamo va en el pago.
+      const loanId = payment.loanId ?? payment.installment?.loanId;
+      if (!loanId) return;
       const period = new Date().toISOString().slice(0, 7);
-      await this.reportTradeline(payment.installment.loanId, userId, period);
+      await this.reportTradeline(loanId, userId, period);
       return;
     }
     if (job.name === 'daily-overdue') {
       const now = new Date();
+      // Los vencimientos se miden con el día calendario de Colombia.
+      const today = bogotaDate(now);
       const due = await this.db.startif.installment.findMany({
         where: {
-          dueDate: { lte: now },
+          dueDate: { lte: new Date(`${today}T00:00:00Z`) },
           status: { in: ['PENDING', 'DUE', 'PARTIALLY_PAID'] },
         },
         include: { loan: true },
       });
       for (const installment of due) {
-        const overdue =
-          installment.dueDate.getTime() <
-          new Date(now.toISOString().slice(0, 10)).getTime();
-        await this.db.startif.installment.update({
-          where: { id: installment.id },
-          data: { status: overdue ? 'OVERDUE' : 'DUE' },
+        const status = openInstallmentStatus({
+          dueDate: installment.dueDate,
+          paidCOP: installment.paidCOP,
+          today,
         });
+        if (status !== installment.status)
+          await this.db.startif.installment.update({
+            where: { id: installment.id },
+            data: { status },
+          });
+        if (!['ACTIVE', 'DEFAULTED'].includes(installment.loan.status))
+          continue;
         await this.schedulerQueue?.add(
           'payment-reminder',
           {
             userId: installment.loan.userId,
             installmentId: installment.id,
             dueDate: installment.dueDate.toISOString(),
-            status: overdue ? 'OVERDUE' : 'DUE',
+            status: status === 'OVERDUE' ? 'OVERDUE' : 'DUE',
           },
-          {
-            jobId: `reminder-${installment.id}-${now.toISOString().slice(0, 10)}`,
-          },
+          { jobId: `reminder-${installment.id}-${today}` },
         );
       }
+      await this.reviewLoanStatuses(now);
+      return;
+    }
+    if (job.name === 'loan-status-changed') {
+      const defaulted = job.data.status === 'DEFAULTED';
+      const identity = await this.db.identity.user.findUnique({
+        where: { id: String(job.data.userId) },
+      });
+      if (identity) {
+        const text = defaulted
+          ? 'Tu crédito tiene cuotas vencidas y entró en mora. Ingresa a LUFT para ponerte al día.'
+          : 'Tu crédito volvió a estar al día. Gracias por ponerte al corriente.';
+        await Promise.all([
+          this.integrations.sendEmail(
+            identity.email,
+            defaulted
+              ? 'Tu crédito LUFT está en mora'
+              : 'Tu crédito LUFT está al día',
+            `<h1>Hola, ${identity.fullName.split(' ')[0]}</h1><p>${text}</p>`,
+          ),
+          this.integrations.sendWhatsApp(identity.phone, `LUFT: ${text}`),
+        ]);
+      }
+      await this.integrations.triggerAutomation('luft-loan-status', {
+        event: defaulted ? 'loan.defaulted' : 'loan.cured',
+        ...job.data,
+      });
       return;
     }
     if (job.name === 'payment-reminder') {
@@ -224,13 +290,74 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     }
     if (job.name === 'monthly-report') {
       const loans = await this.db.startif.loan.findMany({
-        where: { status: { in: ['ACTIVE', 'DEFAULTED', 'COMPLETED'] } },
+        where: {
+          status: { in: ['ACTIVE', 'DEFAULTED', 'COMPLETED', 'WRITTEN_OFF'] },
+        },
       });
       const period = new Date().toISOString().slice(0, 7);
       for (const loan of loans) {
         await this.reportTradeline(loan.id, loan.userId, period);
       }
       return;
+    }
+  }
+
+  /**
+   * Mora automática: un préstamo vigente entra en mora cuando una cuota lleva
+   * `defaultAfterDays` días vencida, y vuelve a vigente al ponerse al día.
+   * El castigo nunca es automático: lo decide finanzas.
+   */
+  private async reviewLoanStatuses(now: Date) {
+    const today = bogotaDate(now);
+    const loans = await this.db.startif.loan.findMany({
+      where: { status: { in: ['ACTIVE', 'DEFAULTED'] } },
+      include: { installments: { select: { status: true, dueDate: true } } },
+    });
+    for (const loan of loans) {
+      const expected = resolveLoanStatus({
+        current: loan.status,
+        installments: loan.installments,
+        today,
+        defaultAfterDays: loan.defaultAfterDays,
+      });
+      if (expected === loan.status) continue;
+      const result = await this.db.startif.$transaction(async (tx) => {
+        await lockLoan(tx, loan.id);
+        return syncLoanStatus(tx, loan.id, now);
+      });
+      if (result.status === result.previousStatus) continue;
+      await this.audit.record({
+        actorRole: 'SYSTEM',
+        action:
+          result.status === 'DEFAULTED'
+            ? 'credit.loan.defaulted'
+            : 'credit.loan.status_changed',
+        resource: 'Loan',
+        resourceId: loan.id,
+        payload: {
+          previousStatus: result.previousStatus,
+          status: result.status,
+          defaultAfterDays: loan.defaultAfterDays,
+          daysOverdue: loan.installments
+            .filter((row) => !isSettled(row.status))
+            .reduce(
+              (max, row) => Math.max(max, daysOverdue(row.dueDate, today)),
+              0,
+            ),
+          outstandingBalanceCOP: result.outstandingBalanceCOP.toString(),
+        },
+      });
+      if (['ACTIVE', 'DEFAULTED'].includes(result.status))
+        await this.schedulerQueue?.add(
+          'loan-status-changed',
+          {
+            userId: loan.userId,
+            loanId: loan.id,
+            previousStatus: result.previousStatus,
+            status: result.status,
+          },
+          { jobId: `loan-status-${loan.id}-${result.status}-${today}` },
+        );
     }
   }
 
@@ -358,9 +485,8 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
               JSON.stringify({
                 title: 'LUFT',
                 body:
-                  job.name === 'credit-approved'
-                    ? 'Tu ruta de crédito tiene una actualización.'
-                    : 'Hay una novedad en tu ruta financiera.',
+                  CREDIT_NOTICES[job.name]?.push ??
+                  'Hay una novedad en tu ruta financiera.',
                 url: '/app',
               }),
             );
@@ -379,19 +505,17 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
         where: { id: userId },
       });
       if (identity) {
-        const approved = job.name === 'credit-approved';
+        const notice = CREDIT_NOTICES[job.name];
         await Promise.all([
           this.integrations.sendEmail(
             identity.email,
-            approved
-              ? 'Tu crédito LUFT fue aprobado'
-              : 'Tienes una actualización en LUFT',
-            `<h1>Hola, ${identity.fullName.split(' ')[0]}</h1><p>${approved ? 'Tu ruta StartIF fue aprobada. Revisa tu plan y tarjeta virtual.' : 'Ingresa a LUFT para ver la novedad de tu ruta.'}</p>`,
+            notice?.subject ?? 'Tienes una actualización en LUFT',
+            `<h1>Hola, ${identity.fullName.split(' ')[0]}</h1><p>${notice?.body ?? 'Ingresa a LUFT para ver la novedad de tu ruta.'}</p>`,
           ),
           this.integrations.sendWhatsApp(
             identity.phone,
-            approved
-              ? 'LUFT: tu ruta StartIF fue aprobada. Ingresa para revisar tu plan.'
+            notice
+              ? `LUFT: ${notice.body}`
               : 'LUFT: tienes una actualización en tu ruta financiera.',
           ),
         ]);
