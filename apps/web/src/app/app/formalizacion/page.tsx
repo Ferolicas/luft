@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useLuft } from "@/components/luft/shell";
-import { Alert, Bar, Button, Card, Checkbox, Chip, Header, Icon, OptionCard, Screen, Tip, formatCOP } from "@/components/luft/ui";
+import { Alert, Bar, Button, Card, Checkbox, Chip, Header, Icon, OptionCard, Screen, Tip} from "@/components/luft/ui";
 import { ConfirmSheet, ConsentBox, FilePicker, Fold, PageState, StatusChip, Steps } from "@/components/luft/v2/kit";
 import { fileSize } from "@/lib/profile";
-import { fmtDate, fmtDateTime, send, uploadFile, useAction, useResource } from "@/lib/v2/api";
+import { cop, fmtDate, fmtDateTime, send, uploadFile, useAction, useResource } from "@/lib/v2/api";
 import type { CasePhase, CaseStatus, FormalizationView, TaxAnswers, VaultDocument } from "@/lib/v2/types";
 
 const PHASES: Array<{ key: CasePhase; label: string }> = [
@@ -98,9 +98,9 @@ export default function FormalizationPage() {
               {diagnosis.ready && diagnosis.available && (
                 <div className="v2-criteria">{diagnosis.criteria.map((criterion) => (
                   <div className={`v2-criterion ${criterion.exceeds ? "over" : ""}`} key={criterion.key}>
-                    <div className="row"><strong>{criterion.label}</strong><span>{formatCOP(criterion.valueCOP)}</span></div>
+                    <div className="row"><strong>{criterion.label}</strong><span>{cop(criterion.valueCOP)}</span></div>
                     <Bar value={(criterion.valueCOP / criterion.limitCOP) * 100} tone={criterion.exceeds ? "amber" : "green"} label={criterion.label} />
-                    <small>Tope: {formatCOP(criterion.limitCOP)} ({new Intl.NumberFormat("es-CO").format(criterion.limitUvt)} UVT) · {criterion.exceeds ? "supera el tope" : "no supera el tope"}</small>
+                    <small>Tope: {cop(criterion.limitCOP)} ({new Intl.NumberFormat("es-CO").format(criterion.limitUvt)} UVT) · {criterion.exceeds ? "supera el tope" : "no supera el tope"}</small>
                   </div>
                 ))}</div>
               )}
@@ -109,7 +109,7 @@ export default function FormalizationPage() {
               {diagnosis.rule && (
                 <Fold summary={`Regla aplicada: año ${diagnosis.rule.taxYear} · versión ${diagnosis.rule.version}`}>
                   <div className="l-kv">
-                    <div>Valor de la UVT<strong>{formatCOP(diagnosis.rule.uvtCOP)}</strong></div>
+                    <div>Valor de la UVT<strong>{cop(diagnosis.rule.uvtCOP)}</strong></div>
                     <div>Vigente desde<strong>{fmtDate(diagnosis.rule.effectiveFrom)}</strong></div>
                   </div>
                   <p className="l-small">{diagnosis.rule.sourceDocument}</p>

@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FILE_ACCEPT, fileProblem, fmtDate, plural, send, uploadFile, useAction } from "@/lib/v2/api";
+import { cop, FILE_ACCEPT, fileProblem, fmtDate, plural, send, uploadFile, useAction } from "@/lib/v2/api";
 import type { Contribution, HouseholdBoard, HouseholdMember, InvitationCreated, MemberRole, Metric, Permissions, PlanCode, PlanView, SharedGoal, ShareLevel, SubscriptionView } from "@/lib/v2/types";
-import { Alert, Bar, Button, Chip, Field, Icon, MoneyInput, OptionCard, Segmented, Sheet, Tip, formatCOP } from "../ui";
+import { Alert, Bar, Button, Chip, Field, Icon, MoneyInput, OptionCard, Segmented, Sheet, Tip} from "../ui";
 import { ConfirmSheet, SheetHead, StatusChip } from "./kit";
 
 export const ROLE_LABEL: Record<MemberRole, string> = { OWNER: "Titular del hogar", BENEFICIARY: "Beneficiario con cupo", SUPPORT: "Red de apoyo" };
@@ -32,7 +32,7 @@ export function PlanPicker({ plans, code, seats, onChange }: { plans: PlanView[]
             <strong>{plan.name}</strong>
             <span className="seats">{plan.minSeats === plan.maxSeats ? plural(plan.maxSeats, "identidad", "identidades") : `De ${plan.minSeats} a ${plan.maxSeats} identidades`}</span>
             <span className="desc">{plan.description}</span>
-            <span className="price">{formatCOP(plan.pricePerSeatCOP)}<small>por identidad{plan.discountPercent > 0 ? ` · ${plan.discountPercent}% menos` : ""}</small></span>
+            <span className="price">{cop(plan.pricePerSeatCOP)}<small>por identidad{plan.discountPercent > 0 ? ` · ${plan.discountPercent}% menos` : ""}</small></span>
           </button>
         ))}
       </div>
@@ -46,7 +46,7 @@ export function PlanPicker({ plans, code, seats, onChange }: { plans: PlanView[]
           </div>
         </div>
       )}
-      {selected && <div className="l-total"><span>Total del plan · {plural(seats, "identidad", "identidades")}</span><strong>{formatCOP(selected.pricePerSeatCOP * seats)}</strong></div>}
+      {selected && <div className="l-total"><span>Total del plan · {plural(seats, "identidad", "identidades")}</span><strong>{cop(selected.pricePerSeatCOP * seats)}</strong></div>}
     </div>
   );
 }
@@ -242,7 +242,7 @@ function ContributionRow({ item, goalIsMine, busy, onResolve, onAttach }: { item
   const choose = (list: FileList | null) => { const picked = list?.[0]; if (input.current) input.current.value = ""; if (!picked) return; const reason = fileProblem(picked); setProblem(reason); if (!reason) onAttach(picked); };
   return (
     <div className="v2-contrib">
-      <div className="row"><span><strong>{formatCOP(item.amountCOP)}</strong><small>{item.isMine ? "Tú" : item.contributorName} · {fmtDate(item.declaredAt)}{item.note ? ` · ${item.note}` : ""}</small></span><StatusChip tone={tone}>{label}</StatusChip></div>
+      <div className="row"><span><strong>{cop(item.amountCOP)}</strong><small>{item.isMine ? "Tú" : item.contributorName} · {fmtDate(item.declaredAt)}{item.note ? ` · ${item.note}` : ""}</small></span><StatusChip tone={tone}>{label}</StatusChip></div>
       {(item.canResolve && item.status === "DECLARED") || item.hasSupport || (item.isMine && item.status === "DECLARED") ? (
         <div className="v2-actions">
           {item.canResolve && item.status === "DECLARED" && <><button type="button" className="v2-mini ok" disabled={busy} onClick={() => onResolve("confirm")}><Icon name="check" size={16} />Confirmar</button><button type="button" className="v2-mini danger" disabled={busy} onClick={() => onResolve("reject")}>Rechazar</button></>}
@@ -262,7 +262,7 @@ export function GoalCard({ goal, canContribute, busy, onContribute, onEdit, onRe
         <div><h3>{goal.title}</h3><p className="l-small">{goal.kind ? `${goal.kind} · ` : ""}{goal.isMine ? "Meta tuya" : `Meta de ${goal.ownerName}`}{goal.targetDate ? ` · para el ${fmtDate(goal.targetDate)}` : ""}</p></div>
         <Chip tone={goal.status === "COMPLETED" || goal.reached ? "green" : "blue"}>{goal.status === "COMPLETED" ? "Cumplida" : goal.reached ? "Monto alcanzado" : "Activa"}</Chip>
       </div>
-      <div className="amounts"><strong>{formatCOP(goal.confirmedCOP)}</strong><span>de {formatCOP(goal.targetCOP)}{goal.pendingCOP > 0 ? <><br />{formatCOP(goal.pendingCOP)} por confirmar</> : null}</span></div>
+      <div className="amounts"><strong>{cop(goal.confirmedCOP)}</strong><span>de {cop(goal.targetCOP)}{goal.pendingCOP > 0 ? <><br />{cop(goal.pendingCOP)} por confirmar</> : null}</span></div>
       <Bar value={goal.percent} tone="green" label={`Avance de ${goal.title}`} />
       {goal.contributions.length > 0
         ? <div className="v2-contribs">{goal.contributions.map((item) => <ContributionRow key={item.id} item={item} goalIsMine={goal.isMine} busy={busy} onResolve={(decision) => onResolve(item.id, decision)} onAttach={(file) => onAttach(item.id, file)} />)}</div>

@@ -108,6 +108,9 @@ export const fmtDateTime = (value: string | null | undefined) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : `${fmtDate(value)}, ${date.toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit" })}`;
 };
+/** Pesos colombianos sin salto de línea entre el signo y la cifra. */
+export const cop = (value: number | string | null | undefined) => `$\u00a0${new Intl.NumberFormat("es-CO").format(Number(value ?? 0))}`;
+export const fmtShort = (value: string | null | undefined) => (value ? parts(value, { day: "numeric", month: "short" }).replaceAll(".", "") : "");
 export const todayISO = () => { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10); };
 export const inDays = (days: number) => (days === 0 ? "hoy" : days === 1 ? "mañana" : days > 1 ? `en ${days} días` : days === -1 ? "ayer" : `hace ${-days} días`);
 export const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;

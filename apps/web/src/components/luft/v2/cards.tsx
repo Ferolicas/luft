@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { fmtDate, fmtDay, inDays, plural, send, todayISO, useAction } from "@/lib/v2/api";
+import { cop, fmtDate, fmtShort, inDays, plural, send, todayISO, useAction } from "@/lib/v2/api";
 import type { CardSimulation, CardsOverview, CardView, Guidance } from "@/lib/v2/types";
-import { Alert, Button, Checkbox, Chip, Field, Icon, MoneyInput, Sheet, Tip, formatCOP } from "../ui";
+import { Alert, Button, Checkbox, Chip, Field, Icon, MoneyInput, Sheet, Tip} from "../ui";
 import { Labeled } from "./household";
 import { BAND_LABEL, bandTone, Facts, Meter, SheetHead } from "./kit";
 
-export const cardName = (card: Pick<CardView, "issuer" | "alias" | "last4">) => `${card.alias || card.issuer}${card.last4 ? ` ·· ${card.last4}` : ""}`;
+export const cardName = (card: Pick<CardView, "issuer" | "alias" | "last4">) => `${card.alias || card.issuer}${card.last4 ? ` •••• ${card.last4}` : ""}`;
 const TERMS = [1, 3, 6, 12, 24, 36];
 const IMPACT = { FAVORABLE: ["green", "check_circle", "Compra manejable"], NEUTRAL: ["amber", "info", "Revisa antes de comprar"], RISK: ["red", "warning", "Compra de riesgo"] } as const;
 const numberOr = (value: string) => (value.trim() === "" ? null : Number(value.replace(",", ".")));
@@ -79,7 +79,7 @@ export function PurchaseSheet({ card, onClose, onSaved }: { card: CardView; onCl
   const save = () => action.run(async () => onSaved(await send<CardsOverview>("POST", `/luft/cards/${card.id}/purchases`, { amountCOP: amount, installments, purchasedAt: date, description: description.trim(), isCashAdvance: advance, applyToBalance: apply }), "Compra registrada."));
   return (
     <Sheet title="Registrar compra" onClose={onClose}>
-      <SheetHead title="Registrar compra">{cardName(card)} · disponible {formatCOP(card.summary.availableCOP)}</SheetHead>
+      <SheetHead title="Registrar compra">{cardName(card)} · disponible {cop(card.summary.availableCOP)}</SheetHead>
       <div className="v2-form">
         <Labeled label="Valor de la compra"><MoneyInput label="Valor de la compra" value={amount} onChange={setAmount} /></Labeled>
         <Field label="¿Qué compraste?" valid={description.trim().length >= 2}><input value={description} maxLength={160} placeholder="Ej.: Portátil" onChange={(event) => setDescription(event.target.value)} /></Field>
@@ -106,7 +106,7 @@ export function SimulatorSheet({ card, onClose }: { card: CardView; onClose: () 
     const [tone, icon, title] = IMPACT[result.trajectory.impact];
     return (
       <Sheet title="Resultado de la simulación" onClose={onClose}>
-        <SheetHead title={`${formatCOP(result.amountCOP)} a ${plural(result.installments, "cuota", "cuotas")}`}>{cardName(card)}{result.isCashAdvance ? " · avance en efectivo" : ""}. No registra ninguna compra.</SheetHead>
+        <SheetHead title={`${cop(result.amountCOP)} a ${plural(result.installments, "cuota", "cuotas")}`}>{cardName(card)}{result.isCashAdvance ? " · avance en efectivo" : ""}. No registra ninguna compra.</SheetHead>
         <div className="v2-shift" aria-label={`Tu uso del cupo pasaría de ${result.utilizationBeforePercent}% a ${result.utilizationAfterPercent}%`}>
           <div><strong>{result.utilizationBeforePercent}%</strong>uso hoy</div><Icon name="arrow_forward" /><div><strong>{result.utilizationAfterPercent}%</strong>uso después</div>
         </div>
@@ -114,16 +114,16 @@ export function SimulatorSheet({ card, onClose }: { card: CardView; onClose: () 
         <div className="v2-wrap"><Chip tone={bandTone(result.bandAfter)}>{BAND_LABEL[result.bandAfter]}</Chip>{result.exceedsLimit && <Chip tone="red">Supera tu cupo</Chip>}</div>
         <Tip tone={tone} icon={icon} title={title}>{result.trajectory.explanation}</Tip>
         <Facts items={[
-          { label: result.installments === 1 ? "Pago" : "Primera cuota", value: formatCOP(result.firstInstallmentCOP), hint: result.installments > 1 ? `Última: ${formatCOP(result.lastInstallmentCOP)}` : undefined },
-          { label: "Disponible después", value: formatCOP(result.availableAfterCOP) },
-          { label: "Intereses estimados", value: result.totalInterestCOP != null ? formatCOP(result.totalInterestCOP) : "—", hint: result.rateKnown && result.monthlyRatePercent != null ? `Tasa mensual ${String(result.monthlyRatePercent).replace(".", ",")}%` : "Registra la tasa de tu tarjeta para estimarlos" },
-          { label: "Total a pagar", value: result.totalCOP != null ? formatCOP(result.totalCOP) : "—" },
+          { label: result.installments === 1 ? "Pago" : "Primera cuota", value: cop(result.firstInstallmentCOP), hint: result.installments > 1 ? `Última: ${cop(result.lastInstallmentCOP)}` : undefined },
+          { label: "Disponible después", value: cop(result.availableAfterCOP) },
+          { label: "Intereses estimados", value: result.totalInterestCOP != null ? cop(result.totalInterestCOP) : "—", hint: result.rateKnown && result.monthlyRatePercent != null ? `Tasa mensual ${String(result.monthlyRatePercent).replace(".", ",")}%` : "Registra la tasa de tu tarjeta para estimarlos" },
+          { label: "Total a pagar", value: result.totalCOP != null ? cop(result.totalCOP) : "—" },
           { label: "Compras a plazos a la vez", value: result.simultaneousDeferredPurchases },
           { label: "Peso en tu capacidad", value: result.installmentShareOfCapacityPercent != null ? `${result.installmentShareOfCapacityPercent}%` : "—", hint: result.installmentShareOfCapacityPercent != null ? "De tu capacidad mensual declarada" : "Completa ingresos y gastos en tu perfil" },
         ]} />
         <div className="v2-dates">
-          <div><Icon name="calendar_today" /><span><strong>Corte: {fmtDay(result.statement.date)}</strong>{inDays(result.statement.days)}</span></div>
-          <div><Icon name="schedule" /><span><strong>Pago: {fmtDay(result.payment.date)}</strong>{inDays(result.payment.days)}</span></div>
+          <div><Icon name="calendar_today" /><span><strong>Corte: {fmtShort(result.statement.date)}</strong>{inDays(result.statement.days)}</span></div>
+          <div><Icon name="schedule" /><span><strong>Pago: {fmtShort(result.payment.date)}</strong>{inDays(result.payment.days)}</span></div>
         </div>
         {result.warnings.map((warning) => <Alert key={warning} type="warning">{warning}</Alert>)}
         <p className="l-fine">{result.disclaimer}</p>

@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useLuft } from "@/components/luft/shell";
-import { Alert, Bar, Button, Card, Chip, Field, Header, Icon, MoneyInput, Screen, Sheet, Tip, formatCOP } from "@/components/luft/ui";
+import { Alert, Bar, Button, Card, Chip, Field, Header, Icon, MoneyInput, Screen, Sheet, Tip} from "@/components/luft/ui";
 import { Labeled } from "@/components/luft/v2/household";
 import { Facts, Fold, PageState, SheetHead, StatusChip } from "@/components/luft/v2/kit";
 import { ApiError } from "@/lib/api";
-import { describeError, errorCode, fmtDate, inDays, percentText, send, useAction, useResource } from "@/lib/v2/api";
+import { cop, describeError, errorCode, fmtDate, inDays, percentText, send, useAction, useResource } from "@/lib/v2/api";
 import type { CreditInstallment, CreditsView, CreditView } from "@/lib/v2/types";
 
 type Tone = "" | "green" | "blue" | "amber" | "red" | "violet";
@@ -48,6 +48,7 @@ export default function CreditsPage() {
   const pendingCheck = purpose !== applied.purpose || description !== applied.description || amount !== applied.amount;
   const hasRange = Boolean(product && product.minAmountCOP !== product.maxAmountCOP);
   const met = second.requirements.filter((item) => item.met).length;
+  const secondOpen = data.credits.some((credit) => credit.productCode === "BUILDER_2" && !["rechazado", "pagado"].includes(credit.stage ?? ""));
   const check = () => setApplied({ purpose, description, amount });
   const apply = () => request.run(async () => {
     await send("POST", "/startif/applications", { productCode: "BUILDER_2", purpose, ...(purpose === "OTRO" ? { purposeDescription: description.trim() } : {}), ...(hasRange && amount ? { amountCOP: amount } : {}) });
@@ -81,22 +82,22 @@ export default function CreditsPage() {
               ))}</ul>
               {product && (
                 <Facts items={[
-                  { label: hasRange ? "Monto evaluado" : "Monto", value: formatCOP(product.amountCOP), hint: hasRange ? `Entre ${formatCOP(product.minAmountCOP)} y ${formatCOP(product.maxAmountCOP)}` : undefined },
+                  { label: hasRange ? "Monto evaluado" : "Monto", value: cop(product.amountCOP), hint: hasRange ? `Entre ${cop(product.minAmountCOP)} y ${cop(product.maxAmountCOP)}` : undefined },
                   { label: "Plazo", value: `${product.termMonths} meses`, hint: `Tasa ${percentText(product.monthlyRate)} mensual` },
-                  { label: "Primera cuota", value: formatCOP(product.firstInstallmentCOP), hint: `Última: ${formatCOP(product.lastInstallmentCOP)}` },
-                  { label: "Total a pagar", value: formatCOP(product.totalCOP), hint: `Intereses ${formatCOP(product.totalInterestCOP)}` },
+                  { label: "Primera cuota", value: cop(product.firstInstallmentCOP), hint: `Última: ${cop(product.lastInstallmentCOP)}` },
+                  { label: "Total a pagar", value: cop(product.totalCOP), hint: `Intereses ${cop(product.totalInterestCOP)}` },
                 ]} />
               )}
             </Card>
 
-            <Card>
+            {secondOpen ? <Tip icon="schedule" title="Ya tienes una solicitud de crédito 2 en curso">Continúala desde su tarjeta. Mientras esté en curso no puedes pedir otra.</Tip> : <Card>
               <div className="v2-card-head"><div><h3>¿Para qué lo usarías?</h3><p className="l-small">La finalidad hace parte de la evaluación y queda registrada en tu solicitud.</p></div></div>
               <div className="v2-form">
                 <Field label="Finalidad" trailing={<Icon name="keyboard_arrow_down" />}>
                   <select value={purpose} onChange={(event) => setPurpose(event.target.value)}><option value="">Elige una finalidad</option>{second.purposes.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select>
                 </Field>
                 {purpose === "OTRO" && <Field label="Describe la finalidad" hint={descriptionOk ? undefined : "Escribe al menos 10 caracteres."}><input value={description} maxLength={300} onChange={(event) => setDescription(event.target.value)} /></Field>}
-                {hasRange && product && <Labeled label="Monto que necesitas" hint={`Entre ${formatCOP(product.minAmountCOP)} y ${formatCOP(product.maxAmountCOP)}`}><MoneyInput label="Monto que necesitas" value={amount} onChange={setAmount} /></Labeled>}
+                {hasRange && product && <Labeled label="Monto que necesitas" hint={`Entre ${cop(product.minAmountCOP)} y ${cop(product.maxAmountCOP)}`}><MoneyInput label="Monto que necesitas" value={amount} onChange={setAmount} /></Labeled>}
               </div>
               {credits.failure && <Alert>{credits.failure}</Alert>}
               {request.failure && <Alert>{request.failure}</Alert>}
@@ -106,7 +107,7 @@ export default function CreditsPage() {
                   ? <Button arrow disabled={request.busy} onClick={apply}>{request.busy ? "Creando solicitud…" : "Solicitar crédito 2"}</Button>
                   : <Tip tone="amber" icon="lock" title="Aún no puedes solicitarlo">Revisa arriba los requisitos que faltan. Cuando los cumplas, vuelve y elige tu finalidad.</Tip>}
               <p className="l-fine">Solicitarlo no garantiza su aprobación: StartIF estudia cada solicitud.</p>
-            </Card>
+            </Card>}
           </aside>
         </div>
       </div>
@@ -127,7 +128,7 @@ function CreditCard({ credit, index, purposeLabel, onPrepay }: { credit: CreditV
   return (
     <Card>
       <div className="v2-card-head">
-        <div className="l-row"><span className="v2-credit-row" style={{ padding: 0 }}><span className="n">{index + 1}</span></span><div><h3>{name}</h3><p className="l-small">{purposeLabel || "Crédito constructor"}{credit.purposeDescription ? ` · ${credit.purposeDescription}` : ""} · {formatCOP(credit.amountCOP)} a {credit.termMonths} meses</p></div></div>
+        <div className="l-row"><span className="v2-credit-row" style={{ padding: 0 }}><span className="n">{index + 1}</span></span><div><h3>{name}</h3><p className="l-small">{purposeLabel || "Crédito constructor"}{credit.purposeDescription ? ` · ${credit.purposeDescription}` : ""} · {cop(credit.amountCOP)} a {credit.termMonths} meses</p></div></div>
         <StatusChip tone={tone}>{label}</StatusChip>
       </div>
       {loan ? <>
@@ -136,8 +137,8 @@ function CreditCard({ credit, index, purposeLabel, onPrepay }: { credit: CreditV
           <Bar value={rows.length ? (paid / rows.length) * 100 : 0} tone={overdue ? "amber" : "green"} label={`Avance de pago de ${name}`} />
         </div>
         <Facts items={[
-          { label: "Saldo de capital", value: formatCOP(loan.outstandingBalanceCOP), hint: `De ${formatCOP(loan.principalCOP)}` },
-          next ? { label: "Próxima cuota", value: formatCOP(Number(next.amountCOP) - Number(next.paidCOP)), hint: `${dueDate(next.dueDate)} · ${inDays(daysTo(next.dueDate))}` } : { label: "Próxima cuota", value: "—", hint: "No tienes cuotas pendientes" },
+          { label: "Saldo de capital", value: cop(loan.outstandingBalanceCOP), hint: `De ${cop(loan.principalCOP)}` },
+          next ? { label: "Próxima cuota", value: cop(Number(next.amountCOP) - Number(next.paidCOP)), hint: `${dueDate(next.dueDate)} · ${inDays(daysTo(next.dueDate))}` } : { label: "Próxima cuota", value: "—", hint: "No tienes cuotas pendientes" },
         ]} />
         <Fold summary={`Calendario de pagos (${rows.length} cuotas)`} open={index === 0}>
           <div className="v2-schedule">{rows.map((row) => {
@@ -145,7 +146,7 @@ function CreditCard({ credit, index, purposeLabel, onPrepay }: { credit: CreditV
             return (
               <div key={row.id} className={settled(row) ? "paid" : ""}>
                 <span className="seq">{settled(row) ? <Icon name="check" size={14} /> : row.sequence}</span>
-                <span><strong>{formatCOP(row.amountCOP)}</strong><small>{dueDate(row.dueDate)}{row.principalCOP != null ? ` · capital ${formatCOP(row.principalCOP)} + interés ${formatCOP(row.interestCOP ?? 0)}` : ""}</small></span>
+                <span><strong>{cop(row.amountCOP)}</strong><small>{dueDate(row.dueDate)}{row.principalCOP != null ? ` · capital ${cop(row.principalCOP)} + interés ${cop(row.interestCOP ?? 0)}` : ""}</small></span>
                 <StatusChip tone={rowTone}>{rowLabel}</StatusChip>
               </div>
             );
@@ -178,13 +179,13 @@ function PrepaySheet({ credit, onClose }: { credit: CreditView; onClose: () => v
       if (result.redirectUrl) window.location.assign(result.redirectUrl); else setCreated(true);
     } catch (cause) {
       if (errorCode(cause) === "configuration_required") { setPending(describeError(cause)); return; }
-      if (cause instanceof ApiError && errorCode(cause) === "prepayment_exceeds_balance") throw new Error(`El abono no puede superar tu saldo de capital (${formatCOP(Number(cause.body.maxCOP ?? balance))}).`);
+      if (cause instanceof ApiError && errorCode(cause) === "prepayment_exceeds_balance") throw new Error(`El abono no puede superar tu saldo de capital (${cop(Number(cause.body.maxCOP ?? balance))}).`);
       throw cause;
     }
   });
   return (
     <Sheet title="Abono anticipado a capital" onClose={onClose}>
-      <SheetHead title="Abono anticipado a capital">Va completo a capital y recalcula tus cuotas pendientes. Saldo de capital hoy: {formatCOP(balance)}.</SheetHead>
+      <SheetHead title="Abono anticipado a capital">Va completo a capital y recalcula tus cuotas pendientes. Saldo de capital hoy: {cop(balance)}.</SheetHead>
       <div className="v2-form">
         <Labeled label="Valor del abono" hint={amount && amount > balance ? "No puede superar tu saldo de capital." : "Necesitas estar al día para abonar."}><MoneyInput label="Valor del abono" value={amount} onChange={setAmount} /></Labeled>
         <Field label="Entidad financiera" hint="Código PSE de tu banco."><input value={bank} placeholder="Código PSE de la entidad" onChange={(event) => setBank(event.target.value)} /></Field>
@@ -192,7 +193,7 @@ function PrepaySheet({ credit, onClose }: { credit: CreditView; onClose: () => v
       {pending && <Tip tone="amber" icon="warning" title="El pago en línea aún no está habilitado">{pending} Tu abono no se registró ni se cobró nada.</Tip>}
       {created && <Alert type="info">El abono quedó creado. Tu saldo se actualiza cuando el proveedor confirme el pago.</Alert>}
       {action.failure && <Alert>{action.failure}</Alert>}
-      <Button disabled={!amount || amount <= 0 || amount > balance || !bank.trim() || action.busy} onClick={pay}>{action.busy ? "Abriendo PSE…" : amount ? `Abonar ${formatCOP(amount)}` : "Abonar a capital"}</Button>
+      <Button disabled={!amount || amount <= 0 || amount > balance || !bank.trim() || action.busy} onClick={pay}>{action.busy ? "Abriendo PSE…" : amount ? `Abonar ${cop(amount)}` : "Abonar a capital"}</Button>
       <p className="l-fine"><Icon name="lock" size={12} /> Pago seguro por PSE · LUFT nunca te pide claves bancarias</p>
       <button type="button" className="l-link-button" onClick={onClose}>Cerrar</button>
     </Sheet>

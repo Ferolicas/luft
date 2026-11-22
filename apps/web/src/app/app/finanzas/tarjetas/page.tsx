@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useLuft } from "@/components/luft/shell";
-import { Alert, Button, Card, Chip, Header, Icon, Screen, Tip, formatCOP } from "@/components/luft/ui";
+import { Alert, Button, Card, Chip, Header, Icon, Screen, Tip} from "@/components/luft/ui";
 import { CardSheet, GuidanceCard, GuidanceHistoryRow, PurchaseSheet, SimulatorSheet, cardName } from "@/components/luft/v2/cards";
 import { BAND_LABEL, bandTone, ConfirmSheet, Empty, Facts, Fold, Meter, PageState, SectionTitle } from "@/components/luft/v2/kit";
-import { fmtDate, fmtDay, inDays, plural, send, useAction, useResource } from "@/lib/v2/api";
+import { cop, fmtDate, fmtShort, inDays, plural, send, useAction, useResource } from "@/lib/v2/api";
 import type { CardsOverview, CardView } from "@/lib/v2/types";
 
 type Open = { kind: "new" } | { kind: "edit" | "purchase" | "simulate" | "delete"; card: CardView } | null;
@@ -35,13 +35,13 @@ export default function CardsPage() {
                   <div className="v2-card-head"><div><span className="l-overline">Salud de tu cupo</span><div className="v2-big"><strong>{totals.utilizationPercent}%</strong><span>de uso en {plural(data.cards.length, "tarjeta", "tarjetas")}</span></div></div><Chip tone={bandTone(totals.band)}>{BAND_LABEL[totals.band]}</Chip></div>
                   <Meter value={totals.utilizationPercent} band={totals.band} label="Uso total del cupo" />
                   <Facts columns={3} items={[
-                    { label: "Cupo total", value: formatCOP(totals.creditLimitCOP) },
-                    { label: "Usado", value: formatCOP(totals.usedBalanceCOP) },
-                    { label: "Disponible", value: formatCOP(totals.availableCOP) },
+                    { label: "Cupo total", value: cop(totals.creditLimitCOP) },
+                    { label: "Usado", value: cop(totals.usedBalanceCOP) },
+                    { label: "Disponible", value: cop(totals.availableCOP) },
                   ]} />
                   <Facts items={[
-                    { label: "Cuotas de compras al mes", value: formatCOP(totals.monthlyInstallmentsCOP), hint: `${plural(data.obligations, "obligación simultánea", "obligaciones simultáneas")}` },
-                    { label: "Capacidad disponible", value: capacity ? formatCOP(capacity.availableCOP) : "—", hint: capacity ? `Ingresos ${formatCOP(capacity.monthlyIncomeCOP)} − compromisos ${formatCOP(capacity.monthlyCommitmentsCOP)}` : "Completa ingresos y gastos en tu perfil" },
+                    { label: "Cuotas de compras al mes", value: cop(totals.monthlyInstallmentsCOP), hint: `${plural(data.obligations, "obligación simultánea", "obligaciones simultáneas")}` },
+                    { label: "Capacidad disponible", value: capacity ? cop(capacity.availableCOP) : "—", hint: capacity ? `Ingresos ${cop(capacity.monthlyIncomeCOP)} − compromisos ${cop(capacity.monthlyCommitmentsCOP)}` : "Completa ingresos y gastos en tu perfil" },
                   ]} />
                 </Card>
               )}
@@ -55,16 +55,16 @@ export default function CardsPage() {
                     <Chip tone={bandTone(card.summary.band)}>{card.summary.utilizationPercent}%</Chip>
                   </div>
                   <Meter value={card.summary.utilizationPercent} band={card.summary.band} label={`Uso del cupo de ${cardName(card)}`} />
-                  <div className="l-row between"><span className="l-muted">Usado {formatCOP(card.usedBalanceCOP)} de {formatCOP(card.creditLimitCOP)}</span><strong style={{ fontSize: 14, fontWeight: 500 }}>Disponible {formatCOP(card.summary.availableCOP)}</strong></div>
+                  <div className="l-row between"><span className="l-muted">Usado {cop(card.usedBalanceCOP)} de {cop(card.creditLimitCOP)}</span><strong style={{ fontSize: 14, fontWeight: 500 }}>Disponible {cop(card.summary.availableCOP)}</strong></div>
                   <div className="v2-dates">
-                    <div><Icon name="calendar_today" /><span><strong>Corte: {fmtDay(card.summary.statement.date)}</strong>{inDays(card.summary.statement.days)}</span></div>
-                    <div><Icon name="schedule" /><span><strong>Pago: {fmtDay(card.summary.payment.date)}</strong>{inDays(card.summary.payment.days)}</span></div>
+                    <div><Icon name="calendar_today" /><span><strong>Corte: {fmtShort(card.summary.statement.date)}</strong>{inDays(card.summary.statement.days)}</span></div>
+                    <div><Icon name="schedule" /><span><strong>Pago: {fmtShort(card.summary.payment.date)}</strong>{inDays(card.summary.payment.days)}</span></div>
                   </div>
                   <div className="l-kv">
                     <div>Compras a plazos vigentes<strong>{card.summary.deferredPurchases}{card.summary.longestTermMonths ? ` · la más larga a ${card.summary.longestTermMonths} meses` : ""}</strong></div>
-                    <div>Cuotas de compras al mes<strong>{formatCOP(card.summary.monthlyInstallmentsCOP)}</strong></div>
+                    <div>Cuotas de compras al mes<strong>{cop(card.summary.monthlyInstallmentsCOP)}</strong></div>
                     {card.summary.cashAdvances > 0 && <div>Avances en efectivo<strong>{card.summary.cashAdvances}</strong></div>}
-                    <div>Pago mínimo<strong>{card.minimumPaymentCOP != null ? formatCOP(card.minimumPaymentCOP) : "Sin registrar"}</strong></div>
+                    <div>Pago mínimo<strong>{card.minimumPaymentCOP != null ? cop(card.minimumPaymentCOP) : "Sin registrar"}</strong></div>
                     <div>Tasa efectiva anual<strong>{card.annualEffectiveRatePercent != null ? `${String(card.annualEffectiveRatePercent).replace(".", ",")}%` : "Sin registrar"}</strong></div>
                   </div>
                   <Button icon="calculate" onClick={() => setOpen({ kind: "simulate", card })}>Simular una compra</Button>
@@ -77,7 +77,7 @@ export default function CardsPage() {
                     <Fold summary={`Compras registradas (${card.purchases.length})`}>
                       <div className="v2-docs">{card.purchases.map((purchase) => (
                         <div className="v2-doc" key={purchase.id}>
-                          <span className="l-grow"><strong>{purchase.description} · {formatCOP(purchase.amountCOP)}</strong><small>{fmtDate(purchase.purchasedAt)} · {purchase.isCashAdvance ? "avance · " : ""}{purchase.installments === 1 ? "1 cuota" : `faltan ${purchase.remainingInstallments} de ${purchase.installments} cuotas`}</small></span>
+                          <span className="l-grow"><strong>{purchase.description} · {cop(purchase.amountCOP)}</strong><small>{fmtDate(purchase.purchasedAt)} · {purchase.isCashAdvance ? "avance · " : ""}{purchase.installments === 1 ? "1 cuota" : `faltan ${purchase.remainingInstallments} de ${purchase.installments} cuotas`}</small></span>
                           <button type="button" className="v2-icon-btn danger" disabled={action.busy} aria-label={`Eliminar la compra ${purchase.description}`} onClick={() => mutate(() => send<CardsOverview>("DELETE", `/luft/cards/${card.id}/purchases/${purchase.id}`), "Compra eliminada.")}><Icon name="delete" size={18} /></button>
                         </div>
                       ))}</div>

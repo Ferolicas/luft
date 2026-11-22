@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLuft } from "@/components/luft/shell";
-import { Alert, Button, Card, Checkbox, Chip, Field, Header, Icon, Screen, Segmented, Tip, formatCOP } from "@/components/luft/ui";
+import { Alert, Button, Card, Checkbox, Chip, Field, Header, Icon, Screen, Segmented, Tip} from "@/components/luft/ui";
 import { PendingInvitation } from "@/components/luft/v2";
 import { ContributionSheet, GoalCard, GoalSheet, InviteSheet, MemberCard, PermissionsEditor, PlanPicker, PlanSheet, ROLE_LABEL } from "@/components/luft/v2/household";
 import { ConfirmSheet, ConsentBox, Empty, Facts, PageState, SectionTitle, StatusChip } from "@/components/luft/v2/kit";
-import { errorCode, fmtDate, plural, send, uploadFile, useAction, useResource } from "@/lib/v2/api";
+import { cop, errorCode, fmtDate, plural, send, uploadFile, useAction, useResource } from "@/lib/v2/api";
 import type { HouseholdBoard, HouseholdMember, Metric, PlanCode, SharedGoal, ShareLevel, SubscriptionView } from "@/lib/v2/types";
 
 type Tab = "hogar" | "metas" | "permisos";
@@ -137,7 +137,7 @@ function Household({ board, subscription, onSubscription, refresh }: { board: Ho
             <aside className="v2-side">
               {isOwner && board.seats && (
                 <Card>
-                  <div className="v2-card-head"><div><h3>Cupos de tu plan</h3><p className="l-small">{subscription?.subscription ? `Plan ${subscription.plans.find((plan) => plan.code === subscription.subscription!.planCode)?.name ?? ""} · ${formatCOP(subscription.subscription.totalCOP)}` : "Plan Individual"}</p></div>{subscription?.subscription && <Chip tone={subscription.subscription.status === "ACTIVE" ? "green" : "blue"}>{subscription.subscription.status === "ACTIVE" ? "Activo" : "Elegido"}</Chip>}</div>
+                  <div className="v2-card-head"><div><h3>Cupos de tu plan</h3><p className="l-small">{subscription?.subscription ? `Plan ${subscription.plans.find((plan) => plan.code === subscription.subscription!.planCode)?.name ?? ""} · ${cop(subscription.subscription.totalCOP)}` : "Plan Individual"}</p></div>{subscription?.subscription && <Chip tone={subscription.subscription.status === "ACTIVE" ? "green" : "blue"}>{subscription.subscription.status === "ACTIVE" ? "Activo" : "Elegido"}</Chip>}</div>
                   <Facts columns={3} items={[{ label: "Total", value: board.seats.total }, { label: "En uso", value: board.seats.used }, { label: "Disponibles", value: board.seats.available }]} />
                   <div className="v2-actions">
                     <button type="button" className="v2-mini" onClick={() => setSheet("invite")}><Icon name="add" size={16} />Invitar</button>
