@@ -22,6 +22,7 @@ import {
 } from '../startif/credit-lifecycle';
 import { annualEffectiveRate, rateString } from '../startif/credit-product';
 import { CreditProductService } from '../startif/credit-product.service';
+import { LegalRateService } from '../startif/legal-rate.service';
 import { normalizePurpose } from '../startif/second-credit';
 import { StartifService } from '../startif/startif.service';
 
@@ -42,6 +43,7 @@ export class AdminService {
     private readonly realtime: RealtimeService,
     private readonly startif: StartifService,
     private readonly products: CreditProductService,
+    private readonly legalRates: LegalRateService,
   ) {}
 
   async overview() {
@@ -340,10 +342,8 @@ export class AdminService {
         message: 'La tasa no puede superar la del pagaré firmado.',
         signedMonthlyRate: signedRate,
       });
-    const usury = await this.db.startif.usuryRate.findFirst({
-      where: { effectiveFrom: { lte: now }, effectiveTo: { gte: now } },
-      orderBy: { effectiveFrom: 'desc' },
-    });
+    // Si falta la del periodo, se consulta la certificación oficial al momento.
+    const usury = await this.legalRates.currentOrSync(now);
     if (!usury)
       throw new BadRequestException({
         code: 'legal_rate_required',

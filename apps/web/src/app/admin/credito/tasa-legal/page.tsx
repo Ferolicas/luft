@@ -53,7 +53,7 @@ export default function LegalRatePage() {
       <PageHead
         eyebrow="Crédito STARTIF"
         title="Tasa máxima legal"
-        description="Toda aprobación de crédito y toda activación de producto se compara contra la tasa de usura vigente. Sin una tasa vigente registrada, ninguna solicitud puede aprobarse."
+        description="Toda aprobación de crédito y toda activación de producto se compara contra la tasa de usura vigente. Sin una tasa vigente registrada, ninguna solicitud puede aprobarse. La de consumo y ordinario se actualiza sola con la certificación que la Superintendencia Financiera publica en datos abiertos; este formulario queda para corregirla o cargarla a mano."
       />
       <div className="cs-grid cs-grid-side">
         <Panel title={<span className="cs-row"><Landmark size={17} /> Registrar tasa certificada</span>} description="Registra exclusivamente el valor certificado por la Superintendencia Financiera, con el enlace a la fuente oficial.">

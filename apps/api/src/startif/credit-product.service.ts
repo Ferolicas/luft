@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { AuditService } from '../common/audit.service';
 import { DatabaseService } from '../database/database.service';
+import { LegalRateService } from './legal-rate.service';
 import {
   activationIssues,
   annualEffectiveRate,
@@ -33,6 +34,7 @@ export class CreditProductService {
   constructor(
     private readonly db: DatabaseService,
     private readonly audit: AuditService,
+    private readonly legalRates: LegalRateService,
   ) {}
 
   /** Versión vigente de un producto, o `null` si no hay ninguna activa. */
@@ -196,11 +198,7 @@ export class CreditProductService {
       });
     // Si hay tasa de usura cargada, la versión no puede superarla. La
     // validación definitiva se repite en cada aprobación.
-    const today = new Date();
-    const usury = await this.db.startif.usuryRate.findFirst({
-      where: { effectiveFrom: { lte: today }, effectiveTo: { gte: today } },
-      orderBy: { effectiveFrom: 'desc' },
-    });
+    const usury = await this.legalRates.current();
     const annual = annualEffectiveRate(terms.monthlyRate);
     if (usury && annual > Number(usury.annualEffectiveRate))
       throw new BadRequestException({

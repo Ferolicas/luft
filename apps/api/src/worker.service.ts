@@ -18,6 +18,7 @@ import {
   openInstallmentStatus,
   resolveLoanStatus,
 } from './startif/credit-lifecycle';
+import { LegalRateService } from './startif/legal-rate.service';
 import { lockLoan, syncLoanStatus } from './startif/loan-sync';
 
 /** Textos de las notificaciones de crédito, por nombre del job. */
@@ -53,6 +54,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly integrations: IntegrationService,
     private readonly config: ConfigService,
     private readonly audit: AuditService,
+    private readonly legalRates: LegalRateService,
   ) {}
 
   onModuleInit() {
@@ -87,6 +89,18 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
       { pattern: '0 12 1 * *' },
       { name: 'monthly-report', data: {} },
     );
+    // La tasa máxima legal se revisa cada seis horas y al arrancar, para que
+    // el cambio de mes no deje la aprobación de créditos sin tasa vigente.
+    void this.schedulerQueue.upsertJobScheduler(
+      'legal-rate-sync',
+      { pattern: '5 */6 * * *' },
+      { name: 'legal-rate-sync', data: {} },
+    );
+    void this.legalRates
+      .sync()
+      .catch((error: Error) =>
+        this.logger.warn(`Tasa legal sin actualizar: ${error.message}`),
+      );
     this.workers.forEach((worker) =>
       worker.on('failed', (job, error) =>
         this.logger.error(`${worker.name}/${job?.name}: ${error.message}`),
@@ -177,6 +191,10 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async lifecycle(job: Job) {
+    if (job.name === 'legal-rate-sync') {
+      await this.legalRates.sync();
+      return;
+    }
     if (job.name === 'credit-review') {
       await this.integrations.triggerAutomation('luft-credit-review', {
         event: 'credit.review_requested',

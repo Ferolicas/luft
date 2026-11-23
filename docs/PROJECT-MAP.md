@@ -119,6 +119,8 @@ Credit origination and servicing for the two builder credits. Everything lives i
 
 `startif/loan-sync.ts` (`lockLoan`, `syncLoanStatus`) is shared by the payments webhook and the worker; `startif/credit-product.service.ts` owns the product catalogue; `startif/zod-exception.filter.ts` turns invalid input into a 400 on the StartIF and admin controllers.
 
+`startif/legal-rate.ts` and `startif/legal-rate.service.ts` keep the legal maximum rate current: the worker reads the Superfinanciera open-data set `pare-7x5i` (consumo y ordinario) at start-up and every six hours, stores usury as 1.5 × the certified bank rate with its resolution, and never overwrites a rate registered by a person. Approval looks the rate up by Colombian calendar day and queries the source on demand when the period is missing; if the source fails nothing is stored and approval stays blocked.
+
 ### Data model (`startif` schema, migration `202611220003_credit_products_v2`)
 
 - `CreditProduct` (new): `code`, `version`, `name`, `purpose`, `sequence` (1|2), `principalCOP` or `minPrincipalCOP`/`maxPrincipalCOP`, `termMonths`, `monthlyRate`, `geometricDecrease`, `disbursementMode` (`SERVICE_FINANCING` | `TRANSFER`), `requirements` (JSON, credit-2 policy), `defaultAfterDays`, `status` (`DRAFT` | `ACTIVE` | `SUSPENDED` | `SUPERSEDED`), `effectiveFrom`/`effectiveTo`, `createdBy`/`activatedBy`/`suspendedBy`, `statusReason`. One ACTIVE version per code (partial unique index). Seeded: `BUILDER_1` "Servicio LUFT" ACTIVE ($600.000, 6 months, 0.010000, 0.200000) and `BUILDER_2` "Consolidación" DRAFT without amounts.

@@ -13,7 +13,7 @@
 - [ ] Instalar credenciales reales y completar certificación/sandbox de Mercado Pago, Truora, bureaus y comunicaciones.
 
 - [x] LUFT + STARTIF V2: producto de crédito versionado con gradiente geométrico, dos créditos constructores, categorías y arquetipos, paquete familiar, evidencias, formalización tributaria, tarjetas, proyectos de vida, matching con políticas, portales de entidad y aliado, cosechas y backtesting.
-- [ ] Cargar la tasa máxima legal vigente (Crédito STARTIF → Tasa legal) antes de la primera aprobación.
+- [x] Tasa máxima legal vigente: se carga sola desde los datos abiertos de la Superfinanciera (consumo y ordinario, usura = 1,5 × interés bancario corriente). Crédito STARTIF → Tasa legal queda para correcciones.
 - [ ] Contratar e instalar proveedor regulado de Open Finance.
 
 ## P1 — activación controlada
