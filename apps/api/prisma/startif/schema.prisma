@@ -373,6 +373,26 @@ model VirtualCard {
   @@index([userId])
 }
 
+/// Aviso previo al reporte negativo (Ley 1266 de 2008, art. 12): qué se le
+/// dijo a la persona, a dónde y cuándo. Es la evidencia de la comunicación.
+model NegativeReportNotice {
+  id                    String   @id @default(uuid()) @db.Uuid
+  loanId                String   @db.Uuid
+  userId                String   @db.Uuid
+  sequence              Int
+  channel               String   @default("EMAIL") @db.VarChar(20)
+  destinationCiphertext String   @db.Text
+  overdueCOP            BigInt
+  subject               String   @db.VarChar(200)
+  textSnapshot          String   @db.Text
+  textHash              String   @db.Char(64)
+  providerMessageId     String?  @db.VarChar(160)
+  sentAt                DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([loanId, sentAt])
+  @@index([userId, sentAt])
+}
+
 model TradelineReport {
   id                String        @id @default(uuid()) @db.Uuid
   userId            String        @db.Uuid

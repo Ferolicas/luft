@@ -31,6 +31,7 @@ function Offer() {
   const [quoteFailure, setQuoteFailure] = useState("");
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [understood, setUnderstood] = useState(false);
+  const [biometric, setBiometric] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState("");
   const loadQuote = useCallback(() => {
@@ -57,7 +58,7 @@ function Offer() {
     setBusy(true); setFailure("");
     try {
       await api("/luft/consents", { method: "POST", body: JSON.stringify({ kind: "SCORE_SHARE_WITH_STARTIF", accepted: true, version: "2026-09-01" }) });
-      await api("/startif/consents", { method: "POST", body: JSON.stringify({ accepted: true, version: "2026-09-01" }) });
+      await api("/startif/consents", { method: "POST", body: JSON.stringify({ accepted: true, version: "2026-11-23" }) });
       await api("/startif/applications", { method: "POST", body: JSON.stringify({ productCode: PRODUCT }) });
       await reload();
     } catch (cause) { setFailure(errorMessage(cause)); setBusy(false); }
@@ -155,13 +156,14 @@ function Offer() {
           </Card>
           <Tip tone="amber" icon="warning" title="Es un crédito real">Debes pagar cada cuota. Los atrasos se reportan y pueden bajar tu puntaje.</Tip>
           <Checkbox checked={understood} onChange={setUnderstood} row>Entiendo que debo pagar cada cuota a tiempo y autorizo compartir mi diagnóstico con StartIF para estudiar la solicitud.</Checkbox>
+          <Checkbox checked={biometric} onChange={setBiometric} row>Autorizo usar la imagen de mi rostro y de mi documento solo para validar mi identidad. Son datos sensibles y no estoy obligado a autorizarlos, pero sin esa validación no se puede estudiar el crédito.</Checkbox>
           <p className="l-fine">*{quote.note} La solicitud no implica aprobación; verás el plan definitivo antes de firmar.</p>
         </>}
         {failure && <Alert>{failure}</Alert>}
       </div>
       <div className="l-footer">
         {step < STEPS ? <Button arrow disabled={step >= 2 && !quote} onClick={() => setStep(step + 1)}>{["Empezar a construirlo", "Continuar", "Ver mi plan de pago", "Continuar", "Continuar"][step - 1]}</Button>
-          : <><Button onClick={accept} disabled={!quote || !understood || busy}>{busy ? "Creando tu solicitud…" : "Aceptar mi crédito"}</Button><Button variant="secondary" href="/app">Ahora no, seguir explorando</Button></>}
+          : <><Button onClick={accept} disabled={!quote || !understood || !biometric || busy}>{busy ? "Creando tu solicitud…" : "Aceptar mi crédito"}</Button><Button variant="secondary" href="/app">Ahora no, seguir explorando</Button></>}
         {step === 3 && <small>Crédito sujeto a la evaluación de <Luft /></small>}
       </div>
     </Screen>

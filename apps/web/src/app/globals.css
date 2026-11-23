@@ -438,6 +438,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shado
 .legal-doc p, .legal-doc li { color: #3b4a63; line-height: 1.75; font-size: .97rem; }
 .legal-doc p { margin: 0 0 12px; }
 .legal-doc section ul { display: grid; gap: 6px; margin: 0 0 12px; padding-left: 20px; }
+.legal-doc code { padding: 1px 6px; border-radius: 6px; background: #eef3fb; font-size: .9em; }
+.public-footer small a { text-decoration: underline; text-underline-offset: 2px; }
 .legal-doc footer { margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--line); }
 .legal-doc footer p { margin: 0 0 4px; font-size: .85rem; color: var(--muted); }
 @media (max-width: 720px) { .legal-doc nav ol { columns: 1; } }

@@ -97,6 +97,25 @@ describe('AuthService pilot registration', () => {
     expect(findUser).not.toHaveBeenCalled();
   });
 
+  it('only accepts Colombian mobile numbers', async () => {
+    const { service, findUser } = fixture();
+    const request = { ip: '127.0.0.1', get: jest.fn() } as never;
+    for (const phone of [
+      '+13055551234',
+      '+34600123456',
+      '+576012345678',
+      '3001234567',
+      '+57300123456',
+    ])
+      await expect(
+        service.register(
+          { ...validRegistration, inviteCode: 'private-owner-code', phone },
+          request,
+        ),
+      ).rejects.toThrow();
+    expect(findUser).not.toHaveBeenCalled();
+  });
+
   it('reveals an OTP only for an invited pilot when SMS is missing', async () => {
     const { service } = fixture();
 

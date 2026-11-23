@@ -25,7 +25,11 @@
 - [x] Términos y Condiciones de LUFT como marca de Tureporte S.A.S. publicados en `/legal/terminos` (versión 2026-11-23, registrada en la bitácora de cada alta). Registro abierto al público (`REGISTRATION_MODE=public`).
 - [ ] Datos de identificación que exige el artículo 50 de la Ley 1480 y que no están publicados: dirección de notificación judicial y teléfono de Tureporte S.A.S. Agregarlos a los términos cuando el propietario los entregue.
 - [ ] El pagaré no nombra al acreedor: definir la razón social que otorga el crédito StartIF antes de la primera firma.
-- [ ] Comprobar que la comunicación previa al reporte negativo (Ley 1266, art. 12) queda implementada antes de activar el reporte a centrales.
+- [x] Comunicación previa al reporte negativo (Ley 1266, art. 12): dos avisos por correo en días distintos y reporte solo pasados 20 días calendario desde el último; la evidencia queda en `NegativeReportNotice`.
+- [x] Cobranza dentro del horario de la Ley 2300 de 2023 (9:00 a. m. de Colombia, nunca domingos ni festivos), un solo canal y un contacto por persona al día.
+- [x] Revisión mensual de que ningún crédito vigente supere la tasa máxima legal, con evidencia en la bitácora y aviso por correo si alguno la supera. El ajuste de la tasa de un crédito sigue siendo manual.
+- [x] Autorización expresa de datos biométricos al solicitar crédito y sección propia en los términos. Enlace a la SIC y aviso de medición de visitas publicados.
+- [ ] Elegir e integrar el proveedor de validación de identidad (Truora requiere venta consultiva; Didit y Verifik permiten registro directo).
 - [ ] Ejecutar piloto interno, revisar PQR, trazabilidad y operación por rol.
 - [x] Prueba de concurrencia (2026-11-23, copia aislada con 100.000 cuentas): fluido hasta 1.500 usuarios simultáneos (panel p95 145 ms, 0,02 % de fallos); a 2.000 el panel sube a p95 2,4 s y PM2 reinicia la API por el tope de 768 MB. El límite son los 2 procesos de `luft-api`, no el servidor.
 

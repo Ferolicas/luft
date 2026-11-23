@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { AuditService } from '../common/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { bogotaDate } from './credit-lifecycle';
+import { annualEffectiveRate } from './credit-product';
 import {
   applicableLegalRates,
   LEGAL_RATE_DATASET,
@@ -120,5 +121,43 @@ export class LegalRateService {
       saved += 1;
     }
     return saved;
+  }
+
+  /**
+   * Verificación periódica que exige el Decreto 1074 de 2015 a quien financia
+   * sin vigilancia de la Superfinanciera: ningún crédito vigente puede cobrar
+   * por encima de la tasa máxima legal. Deja la evidencia en la bitácora.
+   */
+  async reviewActiveLoans(now = new Date()) {
+    const rate = await this.current(now);
+    if (!rate) return null;
+    const legal = Number(rate.annualEffectiveRate);
+    const loans = await this.db.startif.loan.findMany({
+      where: { status: { in: ['ACTIVE', 'DEFAULTED'] } },
+      select: { id: true, monthlyRate: true },
+    });
+    const aboveLimit = loans
+      .filter(
+        (loan) => annualEffectiveRate(Number(loan.monthlyRate)) > legal + 1e-9,
+      )
+      .map((loan) => loan.id);
+    await this.audit.record({
+      actorRole: 'SYSTEM',
+      action: 'legal.usury_rate.loans_reviewed',
+      resource: 'UsuryRate',
+      resourceId: rate.id,
+      payload: {
+        effectiveFrom: rate.effectiveFrom.toISOString(),
+        legalAnnualEffective: legal,
+        loansReviewed: loans.length,
+        loansAboveLimit: aboveLimit,
+      },
+    });
+    return {
+      rateId: rate.id,
+      legalAnnualEffective: legal,
+      reviewed: loans.length,
+      aboveLimit,
+    };
   }
 }

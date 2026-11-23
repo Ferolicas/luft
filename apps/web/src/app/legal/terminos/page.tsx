@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Brand } from "@/components/brand";
 
 /** Debe coincidir con `TERMS_VERSION` de la API: queda en la bitácora de cada registro. */
-const VERSION = "2026-11-23";
+const VERSION = "2026-11-23-2";
 const PRIVACY = "https://restaurar.co/privacy";
 
 export const metadata: Metadata = {
@@ -190,13 +190,37 @@ const SECTIONS: Array<{ id: string; title: string; body: React.ReactNode }> = [
     ),
   },
   {
+    id: "biometricos",
+    title: "16. Datos biométricos",
+    body: (
+      <>
+        <p>Para estudiar un crédito validamos tu identidad comparando la imagen de tu rostro con tu documento. Esos son <strong>datos sensibles</strong>: no estás obligado a autorizarlos y solo los tratamos con tu autorización expresa, que damos por separado al solicitar el crédito.</p>
+        <ul>
+          <li>Los usamos únicamente para confirmar que eres tú y prevenir la suplantación.</li>
+          <li>La validación la hace un proveedor especializado que actúa por encargo de Tureporte S.A.S. y no puede usar tus datos para nada más.</li>
+          <li>Sin esa validación no es posible estudiar un crédito, pero puedes seguir usando el resto de LUFT.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: "medicion",
+    title: "17. Medición de visitas",
+    body: (
+      <>
+        <p>En las páginas públicas (inicio, registro y páginas legales) usamos una herramienta propia para saber cuántas visitas recibimos y por dónde llegan. No usa cookies, no muestra publicidad, no comparte datos con terceros y no guarda tu dirección IP; solo deja un identificador anónimo en tu navegador.</p>
+        <p>No medimos nada dentro de tu cuenta. Si prefieres que tampoco se cuenten tus visitas, abre cualquier página pública agregando <code>?notrack=1</code> al final de la dirección; con <code>?notrack=0</code> lo vuelves a activar.</p>
+      </>
+    ),
+  },
+  {
     id: "comunicaciones",
-    title: "16. Comunicaciones",
+    title: "18. Comunicaciones",
     body: <p>Te escribimos por correo, SMS, notificaciones de la app y WhatsApp. Los avisos de tu cuenta y de tus obligaciones son indispensables y no se pueden desactivar; los mensajes educativos y promocionales solo los recibes si los autorizas y puedes dejar de recibirlos cuando quieras.</p>,
   },
   {
     id: "cierre",
-    title: "17. Cierre de la cuenta",
+    title: "19. Cierre de la cuenta",
     body: (
       <ul>
         <li>Puedes cerrar tu cuenta en Perfil → Mi cuenta, con tu contraseña.</li>
@@ -208,7 +232,7 @@ const SECTIONS: Array<{ id: string; title: string; body: React.ReactNode }> = [
   },
   {
     id: "disponibilidad",
-    title: "18. Disponibilidad y responsabilidad",
+    title: "20. Disponibilidad y responsabilidad",
     body: (
       <>
         <p>Trabajamos para que LUFT esté disponible y sea seguro, pero puede haber interrupciones por mantenimiento, fallas técnicas o de terceros como bancos, operadores y centrales de riesgo. Cuando un proveedor externo no responde, la plataforma lo informa y no simula un resultado.</p>
@@ -218,7 +242,7 @@ const SECTIONS: Array<{ id: string; title: string; body: React.ReactNode }> = [
   },
   {
     id: "pqr",
-    title: "19. Peticiones, quejas y reclamos",
+    title: "21. Peticiones, quejas y reclamos",
     body: (
       <>
         <p>Escríbenos por Ayuda y PQR dentro de la app o a <a href="mailto:soporte@luft.com.co">soporte@luft.com.co</a>. Respondemos las consultas en un máximo de 10 días y las peticiones, quejas y reclamos en un máximo de 15 días; en la app ves el estado de cada caso.</p>
@@ -228,12 +252,12 @@ const SECTIONS: Array<{ id: string; title: string; body: React.ReactNode }> = [
   },
   {
     id: "cambios",
-    title: "20. Cambios a estos términos",
+    title: "22. Cambios a estos términos",
     body: <p>Podemos actualizar estos términos. La versión vigente es siempre la publicada en esta página, con su fecha. Si un cambio afecta tus derechos u obligaciones te avisamos en la app o por correo antes de que empiece a regir; si no lo aceptas puedes cerrar tu cuenta.</p>,
   },
   {
     id: "ley",
-    title: "21. Ley aplicable",
+    title: "23. Ley aplicable",
     body: <p>Estos términos se rigen por las leyes de la República de Colombia, en especial el Estatuto del Consumidor (Ley 1480 de 2011), la Ley 527 de 1999, la Ley 1581 de 2012 y la Ley 1266 de 2008. Cualquier diferencia se resuelve ante las autoridades y los jueces colombianos.</p>,
   },
 ];
@@ -257,7 +281,7 @@ export default function TermsPage() {
         ))}
         <footer>
           <p>Tureporte S.A.S. · NIT 900.896.499-0 · Colombia</p>
-          <p><a href={PRIVACY} target="_blank" rel="noreferrer">Política de tratamiento de datos</a> · <a href="mailto:soporte@luft.com.co">soporte@luft.com.co</a></p>
+          <p><a href={PRIVACY} target="_blank" rel="noreferrer">Política de tratamiento de datos</a> · <a href="mailto:soporte@luft.com.co">soporte@luft.com.co</a> · <a href="https://www.sic.gov.co" target="_blank" rel="noreferrer">Superintendencia de Industria y Comercio</a></p>
         </footer>
       </article>
     </main>

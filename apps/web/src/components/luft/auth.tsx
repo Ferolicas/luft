@@ -150,7 +150,7 @@ export function RegisterScreen() {
         </>}
         {step === 2 && <>
           <Card>
-            <Field label="Número de celular" prefix={<><ColombiaFlag />+57</>} hint={<span className="l-sr">Número colombiano de 10 dígitos. El prefijo +57 ya está incluido.</span>} valid={/^\d{10}$/.test(form.phone.replace(/\D/g, ""))}><input name="phone" type="tel" inputMode="numeric" autoComplete="tel-national" placeholder="300 123 4567" value={form.phone} onChange={set("phone")} pattern="[0-9 ]{10,13}" required /></Field>
+            <Field label="Número de celular" prefix={<><ColombiaFlag />+57</>} hint={<span className="l-sr">Celular colombiano de 10 dígitos que empieza por 3. El prefijo +57 ya está incluido.</span>} valid={/^3\d{9}$/.test(form.phone.replace(/\D/g, ""))}><input name="phone" type="tel" inputMode="numeric" autoComplete="tel-national" placeholder="300 123 4567" value={form.phone} onChange={set("phone")} pattern="3[0-9 ]{9,12}" title="Escribe un celular colombiano de 10 dígitos que empiece por 3." required /></Field>
             <Field label="Correo electrónico" valid={EMAIL.test(form.email)}><input name="email" type="email" autoComplete="email" value={form.email} onChange={set("email")} required /></Field>
             <Field label="Dirección de residencia" valid={form.address.trim().length >= 8}><input name="address" autoComplete="street-address" value={form.address} onChange={set("address")} minLength={8} maxLength={300} required /></Field>
             <Field label="Estrato socioeconómico" valid={Boolean(form.stratum)} trailing={<Icon name="keyboard_arrow_down" />}>
@@ -171,6 +171,7 @@ export function RegisterScreen() {
             <hr className="l-divider" />
             <Checkbox checked={terms} onChange={setTerms} required>Acepto los <Link className="l-link" href="/legal/terminos" target="_blank">Términos y Condiciones</Link> y autorizo a Tureporte S.A.S., responsable de LUFT, el tratamiento de mis datos según su <a className="l-link" href="https://restaurar.co/privacy" target="_blank" rel="noreferrer">Política de tratamiento de datos</a>.</Checkbox>
             <Checkbox checked={bureau} onChange={setBureau}>Autorizo la consulta de mi historial en Datacrédito y TransUnion para conocer mi punto de partida. <em>Opcional.</em></Checkbox>
+            <p className="l-fine" style={{ textAlign: "left" }}>Medimos las visitas a nuestras páginas públicas con una herramienta propia, sin cookies ni publicidad. <Link className="l-link" href="/legal/terminos#medicion" target="_blank">Saber más</Link>.</p>
           </Card>
           <Tip lufty title="Sin impacto en tu puntaje">Consultar tu historial con <Luft /> no tiene costo ni baja tu puntaje.</Tip>
         </>}

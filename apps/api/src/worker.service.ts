@@ -13,6 +13,17 @@ import { DatabaseService } from './database/database.service';
 import { IntegrationService } from './integrations/integration.service';
 import { lowBalanceEmail } from './integrations/sms';
 import {
+  canContactNow,
+  negativeReportAllowedFrom,
+  noticesForCurrentDelinquency,
+  priorNoticeDue,
+  priorNoticeText,
+  reminderDue,
+  reminderText,
+  textToHtml,
+} from './startif/collection';
+import { toIsoDate } from './startif/credit-calculator';
+import {
   bogotaDate,
   daysOverdue,
   isSettled,
@@ -82,7 +93,8 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     this.schedulerQueue = new Queue('lifecycle', { connection, prefix });
     void this.schedulerQueue.upsertJobScheduler(
       'daily-credit-lifecycle',
-      { pattern: '0 11 * * *' },
+      // 9:00 a. m. de Colombia: dentro del horario en que la ley permite contactar.
+      { pattern: '0 14 * * *' },
       { name: 'daily-overdue', data: {} },
     );
     void this.schedulerQueue.upsertJobScheduler(
@@ -105,6 +117,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     );
     void this.legalRates
       .sync()
+      .then(() => this.reviewLoanRates())
       .catch((error: Error) =>
         this.logger.warn(`Tasa legal sin actualizar: ${error.message}`),
       );
@@ -198,6 +211,35 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Una vez por cada certificación de tasa (cada mes) comprueba que ningún
+   * crédito vigente cobre por encima del máximo legal y avisa si alguno lo hace.
+   */
+  private async reviewLoanRates() {
+    if (!this.schedulerQueue) return;
+    const rate = await this.legalRates.current();
+    if (!rate) return;
+    const redis = await this.schedulerQueue.client;
+    const key = `${this.config.get<string>('REDIS_PREFIX') ?? 'luft:'}loan-rate-review:${rate.id}`;
+    if (await redis.get(key)) return;
+    const review = await this.legalRates.reviewActiveLoans();
+    if (!review) return;
+    await redis.set(key, new Date().toISOString());
+    if (!review.aboveLimit.length) return;
+    this.logger.error(
+      `Créditos por encima de la tasa máxima legal: ${review.aboveLimit.join(', ')}`,
+    );
+    const to =
+      this.config.get<string>('OPERATIONS_ALERT_EMAIL') ??
+      this.config.get<string>('SMS_LOW_BALANCE_ALERT_EMAIL');
+    if (to)
+      await this.integrations.sendEmail(
+        to,
+        'LUFT: hay créditos por encima de la tasa máxima legal',
+        `<p>La revisión mensual encontró ${review.aboveLimit.length} crédito(s) con una tasa superior al máximo legal vigente (${(review.legalAnnualEffective * 100).toFixed(2)} % efectivo anual).</p><p>Ajusta la tasa de estos créditos desde la consola: ${review.aboveLimit.join(', ')}</p>`,
+      );
+  }
+
+  /**
    * Avisa por correo cuando el saldo de SMS alcanza para pocos mensajes. El
    * aviso se repite una vez al día mientras siga bajo y se rearma al recargar.
    */
@@ -238,6 +280,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     }
     if (job.name === 'legal-rate-sync') {
       await this.legalRates.sync();
+      await this.reviewLoanRates();
       return;
     }
     if (job.name === 'credit-review') {
@@ -285,68 +328,32 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
             where: { id: installment.id },
             data: { status },
           });
-        if (!['ACTIVE', 'DEFAULTED'].includes(installment.loan.status))
-          continue;
-        await this.schedulerQueue?.add(
-          'payment-reminder',
-          {
-            userId: installment.loan.userId,
-            installmentId: installment.id,
-            dueDate: installment.dueDate.toISOString(),
-            status: status === 'OVERDUE' ? 'OVERDUE' : 'DUE',
-          },
-          { jobId: `reminder-${installment.id}-${today}` },
-        );
       }
       await this.reviewLoanStatuses(now);
+      await this.planCollectionContacts(now);
+      return;
+    }
+    if (job.name === 'collection-contact') {
+      await this.collectionContact(job);
       return;
     }
     if (job.name === 'loan-status-changed') {
       const defaulted = job.data.status === 'DEFAULTED';
-      const identity = await this.db.identity.user.findUnique({
-        where: { id: String(job.data.userId) },
-      });
-      if (identity) {
-        const text = defaulted
-          ? 'Tu crédito tiene cuotas vencidas y entró en mora. Ingresa a LUFT para ponerte al día.'
-          : 'Tu crédito volvió a estar al día. Gracias por ponerte al corriente.';
-        await Promise.all([
-          this.integrations.sendEmail(
+      // La mora la comunican los avisos de cobro (un solo contacto diario). El
+      // regreso a estar al día se celebra por correo, dentro del horario legal.
+      if (!defaulted && canContactNow(new Date())) {
+        const identity = await this.db.identity.user.findUnique({
+          where: { id: String(job.data.userId) },
+        });
+        if (identity)
+          await this.integrations.sendEmail(
             identity.email,
-            defaulted
-              ? 'Tu crédito LUFT está en mora'
-              : 'Tu crédito LUFT está al día',
-            `<h1>Hola, ${identity.fullName.split(' ')[0]}</h1><p>${text}</p>`,
-          ),
-          this.integrations.sendWhatsApp(identity.phone, `LUFT: ${text}`),
-        ]);
+            'Tu crédito LUFT está al día',
+            `<h1>Hola, ${identity.fullName.split(' ')[0]}</h1><p>Tu crédito volvió a estar al día. Gracias por ponerte al corriente.</p>`,
+          );
       }
       await this.integrations.triggerAutomation('luft-loan-status', {
         event: defaulted ? 'loan.defaulted' : 'loan.cured',
-        ...job.data,
-      });
-      return;
-    }
-    if (job.name === 'payment-reminder') {
-      const identity = await this.db.identity.user.findUnique({
-        where: { id: String(job.data.userId) },
-      });
-      if (identity) {
-        const overdue = job.data.status === 'OVERDUE';
-        await Promise.all([
-          this.integrations.sendEmail(
-            identity.email,
-            'Tu próxima cuota LUFT',
-            `<h1>Hola, ${identity.fullName.split(' ')[0]}</h1><p>Tu cuota está ${overdue ? 'vencida' : 'próxima a vencer'}. Ingresa a LUFT para revisar el valor y pagar por PSE.</p>`,
-          ),
-          this.integrations.sendWhatsApp(
-            identity.phone,
-            `LUFT: tu cuota está ${overdue ? 'vencida' : 'próxima a vencer'}. Revisa y paga de forma segura en ${this.integrations.publicHost()}.`,
-          ),
-        ]);
-      }
-      await this.integrations.triggerAutomation('luft-payment-reminder', {
-        event: 'installment.reminder',
         ...job.data,
       });
       return;
@@ -363,6 +370,179 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
       }
       return;
     }
+  }
+
+  /**
+   * Decide el único contacto de cobro del día para cada persona (Ley 2300 de
+   * 2023: dentro del horario permitido, un solo canal y una vez al día). El
+   * aviso previo al reporte negativo tiene prioridad sobre el recordatorio.
+   * También envía a las centrales los reportes que esperaban ese aviso.
+   */
+  private async planCollectionContacts(now: Date) {
+    const today = bogotaDate(now);
+    const loans = await this.db.startif.loan.findMany({
+      where: { status: { in: ['ACTIVE', 'DEFAULTED'] } },
+      include: { installments: true },
+    });
+    const period = now.toISOString().slice(0, 7);
+    const contacted = new Set<string>();
+    for (const loan of loans) {
+      const open = loan.installments.filter((row) => !isSettled(row.status));
+      const overdue = open.filter((row) => row.status === 'OVERDUE');
+      const dueToday = open.some((row) => toIsoDate(row.dueDate) === today);
+      if (!overdue.length && !dueToday) continue;
+      const current = overdue.length
+        ? await this.currentNotices(loan.id, overdue)
+        : [];
+      const allowedFrom = negativeReportAllowedFrom(current);
+      if (overdue.length && allowedFrom && today >= allowedFrom)
+        await this.reportTradeline(loan.id, loan.userId, period);
+      if (!canContactNow(now) || contacted.has(loan.userId)) continue;
+      const notice = overdue.length ? priorNoticeDue(current, today) : null;
+      const maxDaysOverdue = overdue.reduce(
+        (max, row) => Math.max(max, daysOverdue(row.dueDate, today)),
+        0,
+      );
+      if (!notice && !reminderDue({ dueToday, maxDaysOverdue })) continue;
+      contacted.add(loan.userId);
+      await this.schedulerQueue?.add(
+        'collection-contact',
+        {
+          userId: loan.userId,
+          loanId: loan.id,
+          kind: notice ? 'PRIOR_NOTICE' : 'REMINDER',
+          sequence: notice,
+        },
+        // Una sola tarea por persona y día: no hay segundo contacto.
+        { jobId: `contact-${loan.userId}-${today}` },
+      );
+    }
+  }
+
+  /** Avisos previos que valen para la mora actual de un préstamo. */
+  private async currentNotices(
+    loanId: string,
+    overdue: Array<{ dueDate: Date }>,
+  ) {
+    const earliest = overdue.map((row) => toIsoDate(row.dueDate)).sort()[0];
+    const notices = await this.db.startif.negativeReportNotice.findMany({
+      where: { loanId },
+      orderBy: { sentAt: 'asc' },
+    });
+    return noticesForCurrentDelinquency(
+      notices.map((notice) => ({
+        sequence: notice.sequence,
+        sentOn: bogotaDate(notice.sentAt),
+      })),
+      earliest,
+    );
+  }
+
+  /** Envía el contacto de cobro del día y guarda la evidencia del aviso previo. */
+  private async collectionContact(job: Job) {
+    const now = new Date();
+    // Si la tarea se atrasó y ya no es hora de contactar, se deja para mañana.
+    if (!canContactNow(now)) return;
+    const today = bogotaDate(now);
+    const { userId, loanId, kind } = job.data as {
+      userId: string;
+      loanId: string;
+      kind: 'PRIOR_NOTICE' | 'REMINDER';
+    };
+    const [loan, identity] = await Promise.all([
+      this.db.startif.loan.findUnique({
+        where: { id: loanId },
+        include: { installments: { orderBy: { sequence: 'asc' } } },
+      }),
+      this.db.identity.user.findUnique({ where: { id: userId } }),
+    ]);
+    if (!loan || !identity || !['ACTIVE', 'DEFAULTED'].includes(loan.status))
+      return;
+    const open = loan.installments.filter((row) => !isSettled(row.status));
+    const overdue = open.filter((row) => row.status === 'OVERDUE');
+    const firstName = identity.fullName.split(' ')[0];
+    const host = this.integrations.publicHost();
+    if (kind === 'PRIOR_NOTICE') {
+      // Se vuelve a comprobar: la persona pudo pagar desde que se planeó.
+      if (!overdue.length) return;
+      const sequence = priorNoticeDue(
+        await this.currentNotices(loan.id, overdue),
+        today,
+      );
+      if (!sequence) return;
+      const overdueCOP = overdue.reduce(
+        (total, row) => total + (row.amountCOP - row.paidCOP),
+        0n,
+      );
+      const notice = priorNoticeText({
+        firstName,
+        sequence,
+        loanReference: loan.id.slice(0, 8).toUpperCase(),
+        overdue: overdue.map((row) => ({
+          sequence: row.sequence,
+          dueDate: toIsoDate(row.dueDate),
+          pendingCOP: row.amountCOP - row.paidCOP,
+        })),
+        sentOn: today,
+        host,
+      });
+      const delivery = await this.integrations.sendEmail(
+        identity.email,
+        notice.subject,
+        textToHtml(notice.text),
+      );
+      // Sin correo enviado no hay aviso: no se guarda nada y el reporte espera.
+      if (delivery.status !== 'ready') return;
+      const record = await this.db.startif.negativeReportNotice.create({
+        data: {
+          loanId: loan.id,
+          userId,
+          sequence,
+          destinationCiphertext: this.crypto.encrypt(identity.email),
+          overdueCOP,
+          subject: notice.subject,
+          textSnapshot: notice.text,
+          textHash: this.crypto.hash(notice.text),
+          providerMessageId: delivery.data?.id?.slice(0, 160),
+        },
+      });
+      await this.audit.record({
+        actorRole: 'SYSTEM',
+        action: 'credit.loan.prior_notice_sent',
+        resource: 'Loan',
+        resourceId: loan.id,
+        payload: {
+          noticeId: record.id,
+          sequence,
+          overdueCOP: overdueCOP.toString(),
+          textHash: record.textHash,
+        },
+      });
+      return;
+    }
+    const dueToday = open.some((row) => toIsoDate(row.dueDate) === today);
+    const maxDaysOverdue = overdue.reduce(
+      (max, row) => Math.max(max, daysOverdue(row.dueDate, today)),
+      0,
+    );
+    if (!overdue.length && !dueToday) return;
+    const reminder = reminderText({
+      firstName,
+      dueToday,
+      maxDaysOverdue,
+      host,
+    });
+    await this.integrations.sendEmail(
+      identity.email,
+      reminder.subject,
+      textToHtml(reminder.text),
+    );
+    await this.integrations.triggerAutomation('luft-payment-reminder', {
+      event: 'installment.reminder',
+      userId,
+      loanId,
+      status: overdue.length ? 'OVERDUE' : 'DUE',
+    });
   }
 
   /**
@@ -439,6 +619,38 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     const overdue = loan.installments.filter(
       (installment) => installment.status === 'OVERDUE',
     );
+    // Ley 1266, art. 12: la información negativa solo se reporta después de
+    // los avisos previos y de veinte días calendario desde el último.
+    if (overdue.length) {
+      const allowedFrom = negativeReportAllowedFrom(
+        await this.currentNotices(loan.id, overdue),
+      );
+      if (!allowedFrom || bogotaDate(new Date()) < allowedFrom) {
+        for (const provider of ['DATACREDITO', 'TRANSUNION'] as const) {
+          const key = { loanId_provider_period: { loanId, provider, period } };
+          const existing = await this.db.startif.tradelineReport.findUnique({
+            where: key,
+          });
+          if (existing?.status === 'COMPLETED') continue;
+          await this.db.startif.tradelineReport.upsert({
+            where: key,
+            create: {
+              userId,
+              loanId,
+              provider,
+              period,
+              status: 'PENDING',
+              failureReason: 'AWAITING_PRIOR_NOTICE',
+            },
+            update: {
+              status: 'PENDING',
+              failureReason: 'AWAITING_PRIOR_NOTICE',
+            },
+          });
+        }
+        return;
+      }
+    }
     const payload = {
       reportingPeriod: period,
       accountReference: loan.id,

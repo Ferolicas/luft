@@ -46,10 +46,18 @@ const registrationSchema = z.object({
     z.string().min(6).max(12),
   ),
   documentIssuedAt: z.coerce.date().max(new Date()),
+  // Solo celulares de Colombia (+57 y diez dígitos que empiezan por 3): es a
+  // donde llega el SMS de verificación. Se guarda siempre con el prefijo +57.
   phone: z
     .string()
     .trim()
-    .regex(/^\+?57\d{10}$/),
+    .transform((value) => value.replace(/[\s-]/g, ''))
+    .pipe(
+      z
+        .string()
+        .regex(/^\+?573\d{9}$/, 'Escribe un celular colombiano de 10 dígitos.'),
+    )
+    .transform((value) => `+${value.replace(/^\+/, '')}`),
   email: z.string().trim().toLowerCase().email().max(254),
   address: z.string().trim().min(8).max(300),
   stratum: z.coerce.number().int().min(1).max(6),
@@ -87,7 +95,7 @@ const OTP_BURST = { minutes: 10, max: 3 };
 const OTP_DAILY = { minutes: 24 * 60, max: 10 };
 
 /** Versión de los Términos y Condiciones publicados en /legal/terminos. */
-export const TERMS_VERSION = '2026-11-23';
+export const TERMS_VERSION = '2026-11-23-2';
 
 const CONSENT_TEXT =
   'Autorizo a Tureporte S.A.S., propietaria de RESTAURAR y responsable de LUFT, el tratamiento de mis datos personales para crear mi cuenta, verificar mi identidad, personalizar mi educación financiera y gestionar mis solicitudes, conforme a la política publicada en https://restaurar.co/privacy. Las consultas y reportes ante operadores de información financiera requieren autorizaciones separadas y expresas.';

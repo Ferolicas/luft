@@ -57,8 +57,11 @@ import {
 
 type Tx = Prisma.TransactionClient;
 
+/** Versión del texto: cambia cada vez que cambia lo que la persona autoriza. */
+export const STARTIF_CONSENT_VERSION = '2026-11-23';
+
 const STARTIF_CONSENT =
-  'Autorizo a StartIF y LUFT para estudiar, originar y administrar mi solicitud de crédito, validar mi identidad, firmar electrónicamente el pagaré, recaudar las cuotas y reportar el comportamiento positivo o negativo a los operadores de información, conforme a la ley y a las autorizaciones entregadas.';
+  'Autorizo a StartIF y LUFT, marcas de Tureporte S.A.S., para estudiar, originar y administrar mi solicitud de crédito, validar mi identidad, firmar electrónicamente el pagaré, recaudar las cuotas y reportar el comportamiento positivo o negativo a los operadores de información, conforme a la ley y a las autorizaciones entregadas. Autorizo de manera expresa el tratamiento de mis datos biométricos (la imagen de mi rostro y de mi documento de identidad) únicamente para validar mi identidad y prevenir la suplantación; sé que son datos sensibles, que no estoy obligado a autorizarlos y que sin esa validación no es posible estudiar un crédito.';
 
 const QUOTE_NOTE =
   'Cuotas mensuales decrecientes. Las fechas son estimadas y se cuentan desde la activación del crédito. La tasa nunca podrá superar el límite legal vigente y se confirma antes de firmar.';
@@ -182,7 +185,7 @@ export class StartifService {
     const input = z
       .object({
         accepted: z.literal(true),
-        version: z.literal('2026-09-01'),
+        version: z.literal(STARTIF_CONSENT_VERSION),
         deviceMeta: z.record(z.string(), z.unknown()).optional(),
       })
       .parse(body);

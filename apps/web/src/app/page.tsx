@@ -37,7 +37,7 @@ export default function Home() {
         </section>
         <section id="seguridad" className="security-band"><ShieldCheck size={38} /><div><h2>Tu información, bajo tu control.</h2><p>Autorizaciones separadas, datos sensibles cifrados, sesiones seguras y trazabilidad de cada acción importante.</p></div><Link href="/legal/privacidad" className="button button-light">Cómo cuidamos tus datos</Link></section>
       </main>
-      <footer className="public-footer"><Brand inverse /><p>Educación y construcción de historial financiero para Colombia.</p><div><Link href="/legal/privacidad">Privacidad</Link><Link href="/legal/terminos">Términos</Link><Link href="/legal/habeas-data">Habeas data</Link></div><small>© 2026 LUFT · StartIF. Todos los derechos reservados.</small></footer>
+      <footer className="public-footer"><Brand inverse /><p>Educación y construcción de historial financiero para Colombia.</p><div><Link href="/legal/privacidad">Privacidad</Link><Link href="/legal/terminos">Términos</Link><Link href="/legal/habeas-data">Habeas data</Link><a href="https://www.sic.gov.co" target="_blank" rel="noreferrer">Superintendencia de Industria y Comercio</a></div><small>© 2026 LUFT · StartIF, marcas de Tureporte S.A.S. (NIT 900.896.499-0). Todos los derechos reservados. Medimos las visitas sin cookies ni publicidad: <Link href="/legal/terminos#medicion">cómo funciona</Link>.</small></footer>
     </div>
   );
 }
