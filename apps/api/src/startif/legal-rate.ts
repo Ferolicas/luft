@@ -84,7 +84,8 @@ export function legalRateFromCertification(
     effectiveFrom,
     effectiveTo,
     resolution,
-    sourceUrl: `${LEGAL_RATE_DATASET}?resolucion=${resolution}&modalidad=${encodeURIComponent(LEGAL_RATE_MODALITY)}`,
+    // La fila exacta: el número de resolución se repite entre años.
+    sourceUrl: `${LEGAL_RATE_DATASET}?modalidad=${encodeURIComponent(LEGAL_RATE_MODALITY)}&vigencia_desde=${effectiveFrom}T00:00:00.000`,
   };
 }
 

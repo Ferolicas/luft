@@ -79,7 +79,8 @@ export class LegalRateService {
       if (
         existing &&
         Number(existing.annualEffectiveRate) === rate.annualEffectiveRate &&
-        existing.effectiveTo.getTime() === effectiveTo.getTime()
+        existing.effectiveTo.getTime() === effectiveTo.getTime() &&
+        existing.sourceUrl === rate.sourceUrl
       )
         continue;
       const data = {

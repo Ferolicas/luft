@@ -23,7 +23,7 @@ describe('tasa máxima legal desde la certificación oficial', () => {
       effectiveTo: '2026-11-30',
       resolution: '1707',
       sourceUrl:
-        'https://www.datos.gov.co/resource/pare-7x5i.json?resolucion=1707&modalidad=CONSUMO%20Y%20ORDINARIO',
+        'https://www.datos.gov.co/resource/pare-7x5i.json?modalidad=CONSUMO%20Y%20ORDINARIO&vigencia_desde=2026-11-01T00:00:00.000',
     });
   });
 
