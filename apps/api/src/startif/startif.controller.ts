@@ -113,4 +113,19 @@ export class WebhookController {
   ) {
     return this.startif.webhookTruora(signature, request.rawBody, body);
   }
+
+  @Post('didit')
+  didit(
+    @Headers('x-signature-v2') signatureV2: string | undefined,
+    @Headers('x-signature') signature: string | undefined,
+    @Headers('x-timestamp') timestamp: string | undefined,
+    @Req() request: RawBodyRequest<Request>,
+    @Body() body: unknown,
+  ) {
+    return this.startif.webhookDidit(
+      { signatureV2, signature, timestamp },
+      request.rawBody,
+      body,
+    );
+  }
 }

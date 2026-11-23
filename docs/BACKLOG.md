@@ -29,7 +29,7 @@
 - [x] Cobranza dentro del horario de la Ley 2300 de 2023 (9:00 a. m. de Colombia, nunca domingos ni festivos), un solo canal y un contacto por persona al día.
 - [x] Revisión mensual de que ningún crédito vigente supere la tasa máxima legal, con evidencia en la bitácora y aviso por correo si alguno la supera. El ajuste de la tasa de un crédito sigue siendo manual.
 - [x] Autorización expresa de datos biométricos al solicitar crédito y sección propia en los términos. Enlace a la SIC y aviso de medición de visitas publicados.
-- [ ] Elegir e integrar el proveedor de validación de identidad (Truora requiere venta consultiva; Didit y Verifik permiten registro directo).
+- [ ] Validación de identidad con Didit: el conector está desplegado (`KYC_PROVIDER=didit`); falta cargar la API key, el Workflow ID y el Webhook secret, probarlo en Sandbox y recargar saldo para validaciones reales.
 - [ ] Ejecutar piloto interno, revisar PQR, trazabilidad y operación por rol.
 - [x] Prueba de concurrencia (2026-11-23, copia aislada con 100.000 cuentas): fluido hasta 1.500 usuarios simultáneos (panel p95 145 ms, 0,02 % de fallos); a 2.000 el panel sube a p95 2,4 s y PM2 reinicia la API por el tope de 768 MB. El límite son los 2 procesos de `luft-api`, no el servidor.
 

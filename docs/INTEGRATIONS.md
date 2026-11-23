@@ -21,6 +21,16 @@ Official references: [developer portal](https://dev.truora.com/), [API integrati
 - Configure callbacks to `https://luft.com.co/api/webhooks/truora` and certify the exact signature scheme supplied for the account.
 - Keep `TRUORA_ENABLED=false` until the final contracted payload and webhook sample have passed tests.
 
+## Didit identity verification
+
+Official references: [create session](https://docs.didit.me/sessions-api/create-session), [webhooks](https://docs.didit.me/integration/webhooks) and [data models](https://docs.didit.me/reference/data-models.md).
+
+- Select it with `KYC_PROVIDER=didit` and set `DIDIT_ENABLED=true`, `DIDIT_API_KEY`, `DIDIT_WORKFLOW_ID` and `DIDIT_WEBHOOK_SECRET`. Truora stays the default while `KYC_PROVIDER` is unset.
+- The workflow needs ID verification, liveness and face match; AML screening is optional.
+- Webhook destination: `https://luft.com.co/api/webhooks/didit`, version v3, event `status.updated`. LUFT verifies `X-Signature-V2` (or `X-Signature`) and `X-Timestamp`, then reads the decision from Didit itself before trusting it.
+- A verification only completes when the document number read by Didit equals the cédula the person registered; otherwise it fails with `DOCUMENT_MISMATCH`.
+- `DIDIT_SANDBOX=true` accepts simulated results from a Sandbox application and skips the document match. Never leave it on with a live key: a simulated result must not validate anyone.
+
 ## DataCrédito Experian and TransUnion/CIFIN
 
 Official entry points: [Experian Global Developer](https://developer.experian.com/) and [TransUnion Colombia business products](https://www.transunion.co/empresas).

@@ -25,6 +25,7 @@ interface Overview {
 const INTEGRATION_LABEL: Record<string, string> = {
   mercadoPago: "Mercado Pago (recaudo)",
   truora: "Truora (identidad)",
+  didit: "Didit (identidad)",
   dataCredito: "DataCrédito",
   transUnion: "TransUnion",
   sms: "SMS",

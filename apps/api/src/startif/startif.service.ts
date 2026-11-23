@@ -11,6 +11,7 @@ import { AuditService } from '../common/audit.service';
 import { CryptoService } from '../common/crypto.service';
 import { DatabaseService } from '../database/database.service';
 import type { Prisma } from '../generated/startif/client';
+import { diditDocumentMatches, diditOutcome } from '../integrations/didit';
 import { IntegrationService } from '../integrations/integration.service';
 import { QueueService } from '../integrations/queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -384,19 +385,30 @@ export class StartifService {
     const identity = await this.db.identity.user.findUniqueOrThrow({
       where: { id: user.id },
     });
+    const kycProvider = this.integrations.kycProvider();
     const process = await this.db.startif.kycProcess.create({
       data: {
         applicationId: application.id,
         userId: user.id,
+        provider: kycProvider,
         status: 'PROCESSING',
       },
     });
     try {
-      const provider = await this.integrations.startTruoraValidation({
-        userId: user.id,
-        document: this.crypto.decrypt(identity.documentCiphertext),
-        email: identity.email,
-      });
+      const document = this.crypto.decrypt(identity.documentCiphertext);
+      const provider =
+        kycProvider === 'DIDIT'
+          ? await this.integrations.startDiditValidation({
+              attemptId: process.id,
+              applicationId: application.id,
+              userId: user.id,
+              document,
+            })
+          : await this.integrations.startTruoraValidation({
+              userId: user.id,
+              document,
+              email: identity.email,
+            });
       const updated = await this.db.startif.kycProcess.update({
         where: { id: process.id },
         data: {
@@ -418,7 +430,7 @@ export class StartifService {
           data: {
             status: configuration ? 'CONFIGURATION_REQUIRED' : 'FAILED',
             failureReason: configuration
-              ? 'TRUORA_CREDENTIALS_REQUIRED'
+              ? `${kycProvider}_CREDENTIALS_REQUIRED`
               : 'PROVIDER_ERROR',
           },
         }),
@@ -1292,14 +1304,97 @@ export class StartifService {
       where: { externalId },
     });
     if (!process) return { accepted: true, matched: false };
+    return this.applyKycResult(process, {
+      provider: 'TRUORA',
+      status,
+      result: body,
+      failureReason: status === 'FAILED' ? rawStatus : undefined,
+    });
+  }
+
+  /**
+   * Resultado de la validación de identidad con Didit. El aviso solo dispara
+   * la lectura: el resultado que vale es el que se consulta en Didit, y la
+   * cédula del documento validado debe ser la que la persona registró.
+   */
+  async webhookDidit(
+    headers: { signatureV2?: string; signature?: string; timestamp?: string },
+    rawBody: Buffer | undefined,
+    body: any,
+  ) {
+    this.integrations.validateDiditWebhook(headers, rawBody, body);
+    const externalId = String(body?.session_id ?? '');
+    if (!externalId || !String(body?.webhook_type ?? '').endsWith('.updated'))
+      return { accepted: true, matched: false };
+    const process = await this.db.startif.kycProcess.findUnique({
+      where: { externalId },
+    });
+    if (!process || process.provider !== 'DIDIT')
+      return { accepted: true, matched: false };
+    const sandbox = body?.environment === 'sandbox';
+    // Un resultado simulado nunca valida a nadie en producción.
+    if (sandbox && !this.integrations.diditSandbox())
+      return { accepted: true, matched: false };
+    let status = diditOutcome(body?.status);
+    let result: unknown = body;
+    let failureReason =
+      status === 'FAILED' ? String(body?.status ?? 'Declined') : undefined;
+    if (status === 'COMPLETED') {
+      const decision = await this.integrations.diditDecision(externalId);
+      result = decision;
+      status = diditOutcome(decision.status);
+      if (status === 'FAILED') failureReason = String(decision.status);
+      if (status === 'COMPLETED' && !sandbox) {
+        const identity = await this.db.identity.user.findUniqueOrThrow({
+          where: { id: process.userId },
+        });
+        if (
+          !diditDocumentMatches(
+            decision,
+            this.crypto.decrypt(identity.documentCiphertext),
+          )
+        ) {
+          status = 'FAILED';
+          failureReason = 'DOCUMENT_MISMATCH';
+        }
+      }
+    }
+    return this.applyKycResult(process, {
+      provider: 'DIDIT',
+      status,
+      result,
+      failureReason,
+    });
+  }
+
+  private async applyKycResult(
+    process: {
+      id: string;
+      applicationId: string;
+      userId: string;
+      status: string;
+    },
+    outcome: {
+      provider: 'TRUORA' | 'DIDIT';
+      status: 'COMPLETED' | 'FAILED' | 'PROCESSING';
+      result: unknown;
+      failureReason?: string;
+    },
+  ) {
+    // Una validación ya aprobada no se revierte con un aviso tardío.
+    if (process.status === 'COMPLETED')
+      return { accepted: true, matched: true };
+    const { status } = outcome;
     await this.db.startif.$transaction([
       this.db.startif.kycProcess.update({
         where: { id: process.id },
         data: {
           status,
-          resultCiphertext: this.crypto.encrypt(JSON.stringify(body)),
+          resultCiphertext: this.crypto.encrypt(JSON.stringify(outcome.result)),
           failureReason:
-            status === 'FAILED' ? rawStatus.slice(0, 500) : undefined,
+            status === 'FAILED'
+              ? (outcome.failureReason ?? 'FAILED').slice(0, 500)
+              : undefined,
           completedAt: status === 'COMPLETED' ? new Date() : undefined,
         },
       }),
@@ -1320,7 +1415,11 @@ export class StartifService {
       action: 'kyc.webhook.received',
       resource: 'KycProcess',
       resourceId: process.id,
-      payload: { provider: 'TRUORA', status },
+      payload: {
+        provider: outcome.provider,
+        status,
+        ...(outcome.failureReason ? { reason: outcome.failureReason } : {}),
+      },
     });
     this.realtime.toUser(process.userId, 'kyc:status', {
       id: process.id,

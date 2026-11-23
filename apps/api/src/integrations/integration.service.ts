@@ -7,6 +7,13 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Resend } from 'resend';
+import {
+  diditDecisionUrl,
+  diditReady,
+  diditSessionRequest,
+  diditSignatureValid,
+  type DiditSettings,
+} from './didit';
 import { otpEmail, type EmailOtpPurpose } from './otp-email';
 import {
   buildSmsRequest,
@@ -38,6 +45,7 @@ export class IntegrationService {
     return {
       mercadoPago: this.enabled('MERCADOPAGO'),
       truora: this.enabled('TRUORA'),
+      didit: this.diditEnabled(),
       dataCredito: this.enabled('DATACREDITO'),
       transUnion: this.enabled('TRANSUNION'),
       sms: smsReady(this.smsSettings()),
@@ -368,6 +376,101 @@ export class IntegrationService {
       provider: 'EVOLUTION',
       data: (await response.json()) as { key?: unknown },
     };
+  }
+
+  private diditSettings(): DiditSettings {
+    return {
+      apiKey: this.config.get<string>('DIDIT_API_KEY'),
+      workflowId: this.config.get<string>('DIDIT_WORKFLOW_ID'),
+      webhookSecret: this.config.get<string>('DIDIT_WEBHOOK_SECRET'),
+      baseUrl: this.config.get<string>('DIDIT_BASE_URL') || undefined,
+    };
+  }
+
+  private diditEnabled() {
+    return (
+      this.config.get('DIDIT_ENABLED') === 'true' &&
+      diditReady(this.diditSettings())
+    );
+  }
+
+  /** Proveedor de validación de identidad elegido en la configuración. */
+  kycProvider(): 'DIDIT' | 'TRUORA' {
+    return String(this.config.get('KYC_PROVIDER') ?? '')
+      .trim()
+      .toLowerCase() === 'didit'
+      ? 'DIDIT'
+      : 'TRUORA';
+  }
+
+  /** Solo para pruebas: acepta resultados simulados del modo Sandbox de Didit. */
+  diditSandbox() {
+    return this.config.get('DIDIT_SANDBOX') === 'true';
+  }
+
+  async startDiditValidation(input: {
+    attemptId: string;
+    applicationId: string;
+    userId: string;
+    document: string;
+  }) {
+    if (!this.diditEnabled()) this.configurationRequired('DIDIT');
+    const request = diditSessionRequest(this.diditSettings(), {
+      vendorData: input.attemptId,
+      callback: `https://${this.publicHost()}/app/credito`,
+      metadata: { applicationId: input.applicationId, userId: input.userId },
+      document: input.document,
+    });
+    const response = await fetch(request.url, {
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const session = (await response.json().catch(() => null)) as {
+      session_id?: string;
+      url?: string;
+    } | null;
+    if (!response.ok || !session?.session_id || !session.url)
+      throw new ServiceUnavailableException({
+        code: 'provider_error',
+        provider: 'DIDIT',
+        status: response.status,
+      });
+    return { process_id: session.session_id, validation_url: session.url };
+  }
+
+  /** Resultado completo de una sesión, leído directamente de Didit. */
+  async diditDecision(sessionId: string): Promise<Record<string, unknown>> {
+    const settings = this.diditSettings();
+    const response = await fetch(diditDecisionUrl(settings, sessionId), {
+      headers: { 'x-api-key': settings.apiKey ?? '' },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok)
+      throw new ServiceUnavailableException({
+        code: 'provider_error',
+        provider: 'DIDIT',
+        status: response.status,
+      });
+    return (await response.json()) as Record<string, unknown>;
+  }
+
+  validateDiditWebhook(
+    headers: { signatureV2?: string; signature?: string; timestamp?: string },
+    rawBody: Buffer | undefined,
+    body: unknown,
+  ) {
+    if (
+      !diditSignatureValid({
+        secret: this.diditSettings().webhookSecret,
+        ...headers,
+        rawBody,
+        body,
+        nowSeconds: Math.floor(Date.now() / 1000),
+      })
+    )
+      throw new UnauthorizedException('Firma de webhook inválida');
   }
 
   async startTruoraValidation(input: {
