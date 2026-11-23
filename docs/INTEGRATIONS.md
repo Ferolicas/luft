@@ -31,7 +31,7 @@ The Colombian query and monthly reporting specifications are contract-gated. LUF
 
 - Email uses the official [Resend Node.js SDK flow](https://resend.com/docs/send-with-nodejs); verify `luft.com.co`, then set `RESEND_API_KEY` and `EMAIL_FROM`.
 - WhatsApp uses the holding's Evolution API and `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, and `EVOLUTION_INSTANCE`.
-- SMS is provider-neutral until commercial selection; map the final HTTPS endpoint and bearer key to `SMS_BASE_URL`/`SMS_API_KEY`.
+- SMS uses LabsMobile (`SMS_PROVIDER=labsmobile`, `SMS_API_USER` = account email, `SMS_API_KEY` = API token; HTTP Basic against `https://api.labsmobile.com/json/send`, success is JSON `code` "0"). Colombia costs 0.043 credits per message (about EUR 0.0019 on the 2026-11-23 price list). Any other provider keeps the generic bearer format through `SMS_BASE_URL`/`SMS_API_KEY`. The verification text has no accents so it fits one GSM-7 segment.
 - n8n receives HMAC-SHA256 signed events. Import the JSON files in `automations/n8n`, set the same `N8N_WEBHOOK_SECRET`, verify each workflow, and then set `N8N_ENABLED=true`.
 - Web Push is first-party and ships with locally generated VAPID keys stored only in the private server environment.
 

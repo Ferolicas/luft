@@ -1,11 +1,18 @@
 import {
   Injectable,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Resend } from 'resend';
+import {
+  buildSmsRequest,
+  smsAccepted,
+  smsReady,
+  type SmsSettings,
+} from './sms';
 
 export type IntegrationState = 'ready' | 'configuration_required';
 
@@ -17,6 +24,8 @@ export interface IntegrationResult<T> {
 
 @Injectable()
 export class IntegrationService {
+  private readonly logger = new Logger(IntegrationService.name);
+
   constructor(private readonly config: ConfigService) {}
 
   status() {
@@ -25,7 +34,7 @@ export class IntegrationService {
       truora: this.enabled('TRUORA'),
       dataCredito: this.enabled('DATACREDITO'),
       transUnion: this.enabled('TRANSUNION'),
-      sms: Boolean(this.config.get('SMS_API_KEY')),
+      sms: smsReady(this.smsSettings()),
       email: Boolean(this.config.get('RESEND_API_KEY')),
       whatsapp: Boolean(
         this.config.get('EVOLUTION_API_KEY') &&
@@ -205,36 +214,48 @@ export class IntegrationService {
     });
   }
 
+  private smsSettings(): SmsSettings {
+    return {
+      provider: this.config.get<string>('SMS_PROVIDER'),
+      baseUrl: this.config.get<string>('SMS_BASE_URL'),
+      apiUser: this.config.get<string>('SMS_API_USER'),
+      apiKey: this.config.get<string>('SMS_API_KEY'),
+      senderId: this.config.get<string>('SMS_SENDER_ID'),
+    };
+  }
+
   async sendOtp(
     destination: string,
     code: string,
   ): Promise<IntegrationResult<{ messageId?: string }>> {
-    const apiKey = this.config.get<string>('SMS_API_KEY');
-    const baseUrl = this.config.get<string>('SMS_BASE_URL');
-    if (!apiKey || !baseUrl)
-      return { status: 'configuration_required', provider: 'SMS' };
-    const response = await fetch(baseUrl, {
+    const settings = this.smsSettings();
+    const request = buildSmsRequest(settings, destination, code);
+    if (!request) return { status: 'configuration_required', provider: 'SMS' };
+    const response = await fetch(request.url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        to: destination,
-        from: this.config.get('SMS_SENDER_ID') ?? 'LUFT',
-        message: `Tu código LUFT es ${code}. Expira en 10 minutos.`,
-      }),
+      headers: request.headers,
+      body: JSON.stringify(request.body),
       signal: AbortSignal.timeout(15_000),
     });
-    if (!response.ok)
+    const payload = (await response.json().catch(() => null)) as {
+      messageId?: string;
+      subid?: string;
+      code?: unknown;
+    } | null;
+    if (!smsAccepted(settings, response.ok, payload)) {
+      // El motivo queda en el registro del servidor, sin el número de destino.
+      this.logger.warn(
+        `El proveedor de SMS rechazó el envío: HTTP ${response.status}, código ${String(payload?.code ?? 'sin código')}`,
+      );
       throw new ServiceUnavailableException({
         code: 'provider_error',
         provider: 'SMS',
       });
+    }
     return {
       status: 'ready',
       provider: 'SMS',
-      data: (await response.json()) as { messageId?: string },
+      data: { messageId: payload?.messageId ?? payload?.subid },
     };
   }
 
