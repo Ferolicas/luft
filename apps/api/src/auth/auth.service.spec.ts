@@ -49,7 +49,10 @@ function fixture(environment: Record<string, string> = {}) {
   const db = {
     identity: {
       user: { findFirst: findUser },
-      otpChallenge: { create: createChallenge },
+      otpChallenge: {
+        create: createChallenge,
+        count: jest.fn().mockResolvedValue(0),
+      },
     },
   };
   const integrations = {

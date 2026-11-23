@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -29,6 +31,7 @@ import { CryptoService } from '../common/crypto.service';
 import { DatabaseService } from '../database/database.service';
 import { UserStatus } from '../generated/identity/enums';
 import { IntegrationService } from '../integrations/integration.service';
+import { maskEmail } from '../integrations/otp-email';
 import {
   closeLuftAccountData,
   purgeLuftAccountData,
@@ -66,6 +69,22 @@ const registrationSchema = z.object({
   consentVersion: z.literal('2026-09-01-restaurar'),
   inviteCode: z.string().trim().max(200).optional(),
 });
+
+type OtpPurposeName =
+  | 'PHONE_VERIFICATION'
+  | 'LOGIN'
+  | 'SIGNATURE'
+  | 'PASSWORD_RESET'
+  | 'EMAIL_VERIFICATION';
+
+const otpInputSchema = z.object({
+  challengeId: z.string().uuid(),
+  code: z.string().regex(/^\d{6}$/),
+});
+
+/** Códigos que una cuenta puede pedir por motivo: 3 en 10 minutos, 10 al día. */
+const OTP_BURST = { minutes: 10, max: 3 };
+const OTP_DAILY = { minutes: 24 * 60, max: 10 };
 
 const CONSENT_TEXT =
   'Autorizo a Tureporte S.A.S., propietaria de RESTAURAR y responsable de LUFT, el tratamiento de mis datos personales para crear mi cuenta, verificar mi identidad, personalizar mi educación financiera y gestionar mis solicitudes, conforme a la política publicada en https://restaurar.co/privacy. Las consultas y reportes ante operadores de información financiera requieren autorizaciones separadas y expresas.';
@@ -199,12 +218,17 @@ export class AuthService {
     return { userId: user.id, next: 'verify_phone', verification };
   }
 
+  /**
+   * Emite un código de un solo uso. El SMS se usa únicamente para validar el
+   * celular en el registro; los demás motivos viajan al correo de la cuenta.
+   */
   async issueOtp(
     userId: string,
     destination: string,
-    purpose: 'PHONE_VERIFICATION' | 'LOGIN' | 'SIGNATURE' | 'PASSWORD_RESET',
+    purpose: OtpPurposeName,
     revealWhenProviderIsMissing = false,
   ) {
+    await this.assertOtpQuota(userId, purpose);
     const code = randomInt(100_000, 1_000_000).toString();
     const id = randomUUID();
     const challenge = await this.db.identity.otpChallenge.create({
@@ -217,7 +241,10 @@ export class AuthService {
         expiresAt: addMinutes(new Date(), 10),
       },
     });
-    const delivery = await this.integrations.sendOtp(destination, code);
+    const delivery =
+      purpose === 'PHONE_VERIFICATION'
+        ? await this.integrations.sendOtp(destination, code)
+        : await this.integrations.sendOtpEmail(destination, code, purpose);
     return {
       challengeId: challenge.id,
       delivery: delivery.status,
@@ -226,6 +253,109 @@ export class AuthService {
       delivery.status === 'configuration_required'
         ? { testCode: code }
         : {}),
+    };
+  }
+
+  private async assertOtpQuota(userId: string, purpose: OtpPurposeName) {
+    const since = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+    const [burst, daily] = await Promise.all([
+      this.db.identity.otpChallenge.count({
+        where: {
+          userId,
+          purpose,
+          createdAt: { gt: since(OTP_BURST.minutes) },
+        },
+      }),
+      this.db.identity.otpChallenge.count({
+        where: {
+          userId,
+          purpose,
+          createdAt: { gt: since(OTP_DAILY.minutes) },
+        },
+      }),
+    ]);
+    if (burst >= OTP_BURST.max || daily >= OTP_DAILY.max)
+      throw new HttpException(
+        {
+          code: 'otp_rate_limited',
+          message:
+            'Pediste varios códigos seguidos. Espera unos minutos antes de solicitar otro.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+  }
+
+  /** Valida un código y lo deja usado. Falla igual si no existe, venció o no coincide. */
+  private async takeChallenge(
+    input: { challengeId: string; code: string },
+    purpose: OtpPurposeName,
+    userId?: string,
+  ) {
+    const challenge = await this.db.identity.otpChallenge.findFirst({
+      where: {
+        id: input.challengeId,
+        purpose,
+        ...(userId ? { userId } : {}),
+        verifiedAt: null,
+        expiresAt: { gt: new Date() },
+        attempts: { lt: 5 },
+      },
+    });
+    const valid =
+      challenge &&
+      this.crypto.equals(
+        challenge.codeHash,
+        this.crypto.hash(`otp:${challenge.id}:${input.code}`),
+      );
+    if (!challenge?.userId || !valid) {
+      if (challenge)
+        await this.db.identity.otpChallenge.update({
+          where: { id: challenge.id },
+          data: { attempts: { increment: 1 } },
+        });
+      throw new BadRequestException('Código inválido o vencido.');
+    }
+    // Un mismo código no abre dos sesiones aunque lleguen dos peticiones a la vez.
+    const used = await this.db.identity.otpChallenge.updateMany({
+      where: { id: challenge.id, verifiedAt: null },
+      data: { verifiedAt: new Date() },
+    });
+    if (used.count !== 1)
+      throw new BadRequestException('Código inválido o vencido.');
+    return { id: challenge.id, userId: challenge.userId };
+  }
+
+  private registrationMode() {
+    return (
+      this.config.get<'closed' | 'invite' | 'public'>('REGISTRATION_MODE') ??
+      'closed'
+    );
+  }
+
+  /** Código nuevo para quien todavía no validó su celular. */
+  async resendPhoneVerification(body: unknown) {
+    const { challengeId } = z
+      .object({ challengeId: z.string().uuid() })
+      .parse(body);
+    const challenge = await this.db.identity.otpChallenge.findUnique({
+      where: { id: challengeId },
+      include: { user: true },
+    });
+    if (
+      !challenge?.user ||
+      challenge.purpose !== 'PHONE_VERIFICATION' ||
+      challenge.user.status !== UserStatus.PENDING_VERIFICATION
+    )
+      throw new BadRequestException(
+        'Inicia sesión con tu usuario y contraseña para recibir un código nuevo.',
+      );
+    return {
+      verification: await this.issueOtp(
+        challenge.user.id,
+        challenge.user.phone,
+        'PHONE_VERIFICATION',
+        this.registrationMode() === 'invite',
+      ),
     };
   }
 
@@ -297,14 +427,75 @@ export class AuthService {
     });
     if (!user || !(await argon2.verify(user.passwordHash, input.password)))
       throw new UnauthorizedException('Credenciales incorrectas.');
+    if (user.status === UserStatus.PENDING_VERIFICATION)
+      // Quien no terminó de validar su celular recibe un código nuevo por SMS.
+      return {
+        next: 'verify_phone' as const,
+        verification: await this.issueOtp(
+          user.id,
+          user.phone,
+          'PHONE_VERIFICATION',
+          this.registrationMode() === 'invite',
+        ),
+      };
     if (user.status !== UserStatus.ACTIVE)
       throw new UnauthorizedException({
         code: 'account_not_active',
         status: user.status,
       });
+    if (user.twoFactorEnabled) {
+      const verification = await this.issueOtp(user.id, user.email, 'LOGIN');
+      if (verification.delivery !== 'ready') throw this.emailUnavailable();
+      return {
+        next: 'two_factor' as const,
+        challengeId: verification.challengeId,
+        expiresAt: verification.expiresAt,
+        destination: maskEmail(user.email),
+      };
+    }
+    return this.openSession(user, response, request, false);
+  }
+
+  /** Segundo paso del inicio de sesión: el código que llegó al correo. */
+  async verifyLogin(body: unknown, response: Response, request: Request) {
+    const challenge = await this.takeChallenge(
+      otpInputSchema.parse(body),
+      'LOGIN',
+    );
+    const user = await this.db.identity.user.findUnique({
+      where: { id: challenge.userId },
+    });
+    if (!user || user.status !== UserStatus.ACTIVE)
+      throw new UnauthorizedException('Credenciales incorrectas.');
+    return this.openSession(user, response, request, true);
+  }
+
+  private emailUnavailable() {
+    return new ServiceUnavailableException({
+      code: 'configuration_required',
+      provider: 'EMAIL',
+      message:
+        'No pudimos enviar el código a tu correo. Intenta de nuevo en unos minutos.',
+    });
+  }
+
+  private async openSession(
+    user: Parameters<AuthService['toAuthenticated']>[0] & {
+      emailVerifiedAt?: Date | null;
+    },
+    response: Response,
+    request: Request,
+    twoFactor: boolean,
+  ) {
     await this.db.identity.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+      data: {
+        lastLoginAt: new Date(),
+        // Recibir el código demuestra que el correo es de la persona.
+        ...(twoFactor && !user.emailVerifiedAt
+          ? { emailVerifiedAt: new Date() }
+          : {}),
+      },
     });
     const safeUser = this.toAuthenticated(user);
     await this.createSession(safeUser, response, request);
@@ -315,8 +506,93 @@ export class AuthService {
       resource: 'Session',
       ip: request.ip,
       userAgent: request.get('user-agent'),
+      ...(twoFactor ? { payload: { twoFactor: true } } : {}),
     });
     return { user: safeUser };
+  }
+
+  async twoFactorStatus(user: AuthenticatedUser) {
+    const account = await this.db.identity.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: { twoFactorEnabled: true, email: true },
+    });
+    return {
+      enabled: account.twoFactorEnabled,
+      destination: maskEmail(account.email),
+      available: this.integrations.status().email,
+    };
+  }
+
+  /** Antes de activar los dos pasos se comprueba que el correo sí recibe códigos. */
+  async requestTwoFactor(user: AuthenticatedUser) {
+    const account = await this.db.identity.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: { email: true },
+    });
+    const verification = await this.issueOtp(
+      user.id,
+      account.email,
+      'EMAIL_VERIFICATION',
+    );
+    if (verification.delivery !== 'ready') throw this.emailUnavailable();
+    return {
+      challengeId: verification.challengeId,
+      expiresAt: verification.expiresAt,
+      destination: maskEmail(account.email),
+    };
+  }
+
+  async enableTwoFactor(
+    user: AuthenticatedUser,
+    body: unknown,
+    request: Request,
+  ) {
+    await this.takeChallenge(
+      otpInputSchema.parse(body),
+      'EMAIL_VERIFICATION',
+      user.id,
+    );
+    await this.db.identity.user.update({
+      where: { id: user.id },
+      data: { twoFactorEnabled: true, emailVerifiedAt: new Date() },
+    });
+    await this.audit.record({
+      actorUserId: user.id,
+      actorRole: user.role,
+      action: 'identity.two_factor.enabled',
+      resource: 'User',
+      resourceId: user.id,
+      ip: request.ip,
+    });
+    return { enabled: true };
+  }
+
+  async disableTwoFactor(
+    user: AuthenticatedUser,
+    body: unknown,
+    request: Request,
+  ) {
+    const { password } = z
+      .object({ password: z.string().min(1).max(128) })
+      .parse(body);
+    const account = await this.db.identity.user.findUniqueOrThrow({
+      where: { id: user.id },
+    });
+    if (!(await argon2.verify(account.passwordHash, password)))
+      throw new UnauthorizedException('La contraseña no es correcta.');
+    await this.db.identity.user.update({
+      where: { id: user.id },
+      data: { twoFactorEnabled: false },
+    });
+    await this.audit.record({
+      actorUserId: user.id,
+      actorRole: user.role,
+      action: 'identity.two_factor.disabled',
+      resource: 'User',
+      resourceId: user.id,
+      ip: request.ip,
+    });
+    return { enabled: false };
   }
 
   async requestPasswordReset(body: unknown) {
@@ -332,7 +608,23 @@ export class AuthService {
         delivery: 'accepted',
         expiresInMinutes: 10,
       };
-    const result = await this.issueOtp(user.id, user.phone, 'PASSWORD_RESET');
+    const result = await this.issueOtp(
+      user.id,
+      user.email,
+      'PASSWORD_RESET',
+    ).catch((error: unknown) => {
+      // El tope de códigos no debe revelar si la cuenta existe.
+      if (
+        error instanceof HttpException &&
+        error.getStatus() === Number(HttpStatus.TOO_MANY_REQUESTS)
+      )
+        return {
+          challengeId: randomUUID(),
+          delivery: 'ready' as const,
+          expiresAt: addMinutes(new Date(), 10),
+        };
+      throw error;
+    });
     return {
       ...result,
       delivery:

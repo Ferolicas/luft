@@ -11,6 +11,10 @@ import { pendingInvitation } from "@/lib/v2/api";
 import { Alert, Button, Card, Checkbox, ColombiaFlag, Field, Header, Icon, Luft, Screen, Tip } from "./ui";
 
 interface Session { user?: { role?: string } }
+interface Verification { challengeId: string; delivery: string; testCode?: string }
+/** El inicio de sesión puede pedir un paso más: el código del correo o validar el celular. */
+type LoginResult = Session & { next?: "two_factor" | "verify_phone"; challengeId?: string; destination?: string; verification?: Verification };
+const CODE = /^\d{6}$/;
 
 type Passkey = Parameters<typeof startAuthentication>[0]["optionsJSON"];
 
@@ -21,11 +25,21 @@ export function LoginScreen() {
   const [show, setShow] = useState(false);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  async function run(action: () => Promise<string>) {
+  const [twoFactor, setTwoFactor] = useState<{ challengeId: string; destination: string } | null>(null);
+  const [code, setCode] = useState("");
+  /** `null` significa que falta un paso y todavía no hay sesión. */
+  async function run(action: () => Promise<string | null>) {
     setBusy(true); setError("");
-    try { const role = await action(); const invitation = pendingInvitation(); router.push(invitation && role === "USER" ? `/invitacion/${encodeURIComponent(invitation)}` : homeFor(role)); router.refresh(); } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+    try { const role = await action(); if (role === null) return; const invitation = pendingInvitation(); router.push(invitation && role === "USER" ? `/invitacion/${encodeURIComponent(invitation)}` : homeFor(role)); router.refresh(); } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   }
-  const submit = (event: FormEvent) => { event.preventDefault(); void run(async () => (await api<Session>("/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) })).user?.role ?? "USER"); };
+  const signIn = () => run(async () => {
+    const result = await api<LoginResult>("/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) });
+    if (result.next === "two_factor" && result.challengeId) { setTwoFactor({ challengeId: result.challengeId, destination: result.destination ?? "tu correo" }); setCode(""); return null; }
+    if (result.next === "verify_phone" && result.verification) { sessionStorage.setItem("luft_verification", JSON.stringify(result.verification)); router.push(`/verificar?delivery=${result.verification.delivery}`); return null; }
+    return result.user?.role ?? "USER";
+  });
+  const submit = (event: FormEvent) => { event.preventDefault(); void signIn(); };
+  const verify = (event: FormEvent) => { event.preventDefault(); if (!twoFactor) return; void run(async () => (await api<Session>("/auth/login/verify", { method: "POST", body: JSON.stringify({ challengeId: twoFactor.challengeId, code }) })).user?.role ?? "USER"); };
   const passkey = () => {
     if (!identifier) return setError("Escribe primero tu usuario o correo.");
     void run(async () => {
@@ -34,6 +48,22 @@ export function LoginScreen() {
       return (await api<Session>("/auth/passkeys/authentication-verification", { method: "POST", body: JSON.stringify({ challengeId: first.challengeId, response }) })).user?.role ?? "USER";
     });
   };
+  if (twoFactor) return (
+    <Screen>
+      <Header back onBack={() => { setTwoFactor(null); setError(""); }} title="Confirma que eres tú" subtitle={`Enviamos un código de seis dígitos a ${twoFactor.destination}.`} />
+      <form className="l-body" onSubmit={verify}>
+        <Card>
+          {error && <Alert>{error}</Alert>}
+          <Field label="Código de 6 dígitos" valid={CODE.test(code)}><input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="000000" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} required autoFocus /></Field>
+        </Card>
+        <Tip lufty title="¿No llegó?">Revisa la carpeta de correo no deseado. El código vence en 10 minutos.</Tip>
+        <div className="l-footer" style={{ margin: "auto -16px -24px" }}>
+          <Button type="submit" arrow disabled={busy}>{busy ? "Verificando…" : "Verificar y entrar"}</Button>
+          <Button variant="secondary" onClick={() => void signIn()} disabled={busy}>Enviar otro código</Button>
+        </div>
+      </form>
+    </Screen>
+  );
   return (
     <Screen>
       <Header back="/" title="Qué bueno verte de nuevo" subtitle="Continúa construyendo tu historial." />
@@ -88,7 +118,7 @@ export function RegisterScreen() {
     if (passed < CHECKS.length) return setError("Tu contraseña aún no cumple todos los requisitos.");
     setBusy(true); setError("");
     try {
-      const result = await api<{ verification: { challengeId: string; delivery: string; testCode?: string } }>("/auth/register", {
+      const result = await api<{ verification: Verification }>("/auth/register", {
         method: "POST",
         body: JSON.stringify({ ...form, document: form.document.replace(/\D/g, ""), phone: `+57${form.phone.replace(/\D/g, "")}`, inviteCode: form.inviteCode || undefined, consentAccepted: true, consentVersion: "2026-09-01-restaurar" }),
       });
@@ -160,16 +190,29 @@ export function VerifyScreen() {
   const [error, setError] = useState("");
   const [code, setCode] = useState("");
   const [testCode, setTestCode] = useState("");
+  const [notice, setNotice] = useState("");
   useEffect(() => {
     const stored = sessionStorage.getItem("luft_verification");
     if (!stored) return;
     const verification = JSON.parse(stored) as { testCode?: string };
     setTestCode(verification.testCode ?? ""); setCode(verification.testCode ?? "");
   }, []);
+  async function resend() {
+    const stored = sessionStorage.getItem("luft_verification");
+    if (!stored) return setError("Inicia sesión con tu usuario y contraseña para recibir un código nuevo.");
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const { challengeId } = JSON.parse(stored) as { challengeId: string };
+      const result = await api<{ verification: Verification }>("/auth/verify-phone/resend", { method: "POST", body: JSON.stringify({ challengeId }) });
+      sessionStorage.setItem("luft_verification", JSON.stringify(result.verification));
+      setTestCode(result.verification.testCode ?? ""); setCode(result.verification.testCode ?? "");
+      setNotice("Te enviamos un código nuevo por SMS.");
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  }
   async function submit(event: FormEvent) {
     event.preventDefault();
     const stored = sessionStorage.getItem("luft_verification");
-    if (!stored) return setError("Vuelve al registro para solicitar un código nuevo.");
+    if (!stored) return setError("Inicia sesión con tu usuario y contraseña para recibir un código nuevo.");
     const { challengeId } = JSON.parse(stored) as { challengeId: string };
     setBusy(true); setError("");
     try {
@@ -182,15 +225,19 @@ export function VerifyScreen() {
   }
   return (
     <Screen>
-      <Header back="/registro" title="Confirma que eres tú" subtitle="Enviamos un código de seis dígitos al celular que registraste." />
+      <Header back="/registro" title="Confirma que eres tú" subtitle="Enviamos un código de seis dígitos por SMS al celular que registraste." />
       <form className="l-body" onSubmit={submit}>
         <Card>
           {error && <Alert>{error}</Alert>}
-          {testCode && <Alert type="info">Código temporal del piloto: <strong>{testCode}</strong>. Cuando se conecte el proveedor SMS dejará de mostrarse aquí.</Alert>}
+          {notice && <Alert type="success">{notice}</Alert>}
+          {testCode && <Alert type="info">Código temporal del piloto: <strong>{testCode}</strong>.</Alert>}
           <Field label="Código de 6 dígitos" valid={/^\d{6}$/.test(code)}><input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="000000" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} required autoFocus /></Field>
         </Card>
-        <Tip lufty title="¿No llegó?">Durante el piloto el código aparece arriba; luego llegará por SMS.</Tip>
-        <div className="l-footer" style={{ margin: "auto -16px -24px" }}><Button type="submit" arrow disabled={busy}>{busy ? "Verificando…" : "Verificar y continuar"}</Button></div>
+        <Tip lufty title="¿No llegó?">El SMS puede tardar hasta un minuto. Si no llega, pide otro código.</Tip>
+        <div className="l-footer" style={{ margin: "auto -16px -24px" }}>
+          <Button type="submit" arrow disabled={busy}>{busy ? "Verificando…" : "Verificar y continuar"}</Button>
+          <Button variant="secondary" onClick={() => void resend()} disabled={busy}>Enviar otro código</Button>
+        </div>
       </form>
     </Screen>
   );
@@ -214,11 +261,12 @@ export function RecoveryScreen() {
   }
   return (
     <Screen>
-      <Header back="/login" title="Recupera tu acceso" subtitle="Validaremos tu celular antes de aceptar una contraseña nueva." />
+      <Header back="/login" title="Recupera tu acceso" subtitle="Te enviaremos un código al correo de tu cuenta antes de aceptar una contraseña nueva." />
       <form className="l-body" onSubmit={challengeId ? reset : request} key={challengeId ? "reset" : "request"}>
         <Card>
           {error && <Alert>{error}</Alert>}
-          {delivery === "configuration_required" && <Alert type="warning">El proveedor SMS está pendiente de credenciales; la solicitud quedó registrada pero no podemos entregar el código todavía.</Alert>}
+          {delivery === "configuration_required" && <Alert type="warning">El envío de correos no está disponible en este momento; intenta de nuevo más tarde.</Alert>}
+          {challengeId && delivery !== "configuration_required" && <Alert type="info">Si la cuenta existe, enviamos un código a su correo. Revisa también el correo no deseado.</Alert>}
           {!challengeId ? <Field label="Correo o usuario"><input name="identifier" autoComplete="username" required /></Field> : <>
             <Field label="Código de 6 dígitos"><input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" required /></Field>
             <Field label="Contraseña nueva" hint="Mínimo 12 caracteres, con mayúscula, minúscula y número."><input name="password" type="password" autoComplete="new-password" minLength={12} required /></Field>

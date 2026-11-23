@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Resend } from 'resend';
+import { otpEmail, type EmailOtpPurpose } from './otp-email';
 import {
   buildSmsRequest,
   smsAccepted,
@@ -257,6 +258,12 @@ export class IntegrationService {
       provider: 'SMS',
       data: { messageId: payload?.messageId ?? payload?.subid },
     };
+  }
+
+  /** Código de un solo uso por correo (entrada, firma, contraseña, dos pasos). */
+  sendOtpEmail(to: string, code: string, purpose: EmailOtpPurpose) {
+    const { subject, html } = otpEmail(code, purpose);
+    return this.sendEmail(to, subject, html);
   }
 
   async sendEmail(

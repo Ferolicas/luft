@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { Alert, Button, Card, Checkbox, Chip, Field, Header, Icon, Loading, Screen, Tip } from "@/components/luft/ui";
 import { LEVEL_LABEL, PermissionsEditor } from "@/components/luft/v2/household";
@@ -33,6 +33,7 @@ function Frame({ title, subtitle, chips, children, footer }: { title: string; su
 
 export default function InvitationPage() {
   const { token } = useParams<{ token: string }>();
+  const router = useRouter();
   const preview = useResource<InvitationPreview>(`/luft/invitations/${encodeURIComponent(token)}`);
   const [session, setSession] = useState<"unknown" | "yes" | "no">("unknown");
   const [mode, setMode] = useState<"choose" | "login">("choose");
@@ -97,7 +98,13 @@ export default function InvitationPage() {
   if (session === "no") {
     const submit = (event: FormEvent) => {
       event.preventDefault();
-      void login.run(async () => { await send("POST", "/auth/login", { identifier, password }); setSession("yes"); });
+      void login.run(async () => {
+        const result = await send<{ next?: string }>("POST", "/auth/login", { identifier, password });
+        // Con verificación en dos pasos o celular sin validar falta un paso: se termina
+        // en la pantalla de acceso, que devuelve aquí con la invitación guardada.
+        if (result?.next) { rememberInvitation(token); router.push("/login"); return; }
+        setSession("yes");
+      });
     };
     return (
       <Frame title="Te invitaron a un hogar LUFT" subtitle={`${invitation.inviterFirstName} quiere que hagas parte de ${invitation.householdName}.`} chips={chips}>

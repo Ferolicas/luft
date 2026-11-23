@@ -2,7 +2,7 @@
 
 import { startRegistration } from "@simplewebauthn/browser";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useLuft } from "@/components/luft/shell";
 import { Alert, Button, Card, Field, Header, Screen, Tip } from "@/components/luft/ui";
 import { api, errorMessage } from "@/lib/api";
@@ -14,6 +14,22 @@ export default function AccountPage() {
   const [failure, setFailure] = useState("");
   const [message, setMessage] = useState("");
   async function run(action: () => Promise<string | void>) { setBusy(true); setFailure(""); setMessage(""); try { const text = await action(); if (text) setMessage(text); } catch (cause) { setFailure(errorMessage(cause)); } finally { setBusy(false); } }
+  const [twoFactor, setTwoFactor] = useState<{ enabled: boolean; destination: string; available: boolean } | null>(null);
+  const [pending, setPending] = useState("");
+  useEffect(() => { api<{ enabled: boolean; destination: string; available: boolean }>("/auth/two-factor").then(setTwoFactor).catch(() => undefined); }, []);
+  const requestTwoFactor = () => run(async () => {
+    const result = await api<{ challengeId: string; destination: string }>("/auth/two-factor/request", { method: "POST" });
+    setPending(result.challengeId);
+    return `Enviamos un código a ${result.destination}.`;
+  });
+  const enableTwoFactor = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); const code = new FormData(event.currentTarget).get("code");
+    void run(async () => { await api("/auth/two-factor/enable", { method: "POST", body: JSON.stringify({ challengeId: pending, code }) }); setPending(""); setTwoFactor((current) => (current ? { ...current, enabled: true } : current)); return "Verificación en dos pasos activada. Al entrar te pediremos el código que llega a tu correo."; });
+  };
+  const disableTwoFactor = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); const target = event.currentTarget; const password = new FormData(target).get("password");
+    void run(async () => { await api("/auth/two-factor/disable", { method: "POST", body: JSON.stringify({ password }) }); target.reset(); setTwoFactor((current) => (current ? { ...current, enabled: false } : current)); return "Verificación en dos pasos desactivada."; });
+  };
   const passkey = () => run(async () => {
     const first = await api<{ challengeId: string; options: Parameters<typeof startRegistration>[0]["optionsJSON"] }>("/auth/passkeys/registration-options", { method: "POST" });
     const response = await startRegistration({ optionsJSON: first.options });
@@ -57,6 +73,22 @@ export default function AccountPage() {
           <Button variant="secondary" icon="lock" onClick={passkey} disabled={busy}>Registrar llave de acceso</Button>
           <Button variant="secondary" icon="notifications" onClick={push} disabled={busy}>Activar notificaciones</Button>
         </Card>
+        {twoFactor && <Card as="div">
+          <div className="l-stack" style={{ gap: 16 }}>
+            <strong style={{ fontWeight: 500 }}>Verificación en dos pasos</strong>
+            <p className="l-muted">{twoFactor.enabled ? `Activa. Al iniciar sesión te pedimos un código que enviamos a ${twoFactor.destination}.` : `Al iniciar sesión, además de tu contraseña, te pediremos un código que enviamos a ${twoFactor.destination}.`}</p>
+            {!twoFactor.enabled && !pending && <Button variant="secondary" icon="verified_user" onClick={requestTwoFactor} disabled={busy || !twoFactor.available}>Activar con mi correo</Button>}
+            {!twoFactor.enabled && !twoFactor.available && <p className="l-muted">El envío de correos no está disponible en este momento.</p>}
+            {!twoFactor.enabled && pending && <form className="l-stack" onSubmit={enableTwoFactor} style={{ gap: 16 }}>
+              <Field label="Código de 6 dígitos"><input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="000000" required /></Field>
+              <Button type="submit" disabled={busy}>Confirmar y activar</Button>
+            </form>}
+            {twoFactor.enabled && <form className="l-stack" onSubmit={disableTwoFactor} style={{ gap: 16 }}>
+              <Field label="Contraseña actual"><input name="password" type="password" autoComplete="current-password" required /></Field>
+              <Button type="submit" variant="secondary" disabled={busy}>Desactivar</Button>
+            </form>}
+          </div>
+        </Card>}
         <Card as="div">
           <form className="l-stack" onSubmit={password} style={{ gap: 16 }}>
             <strong style={{ fontWeight: 500 }}>Cambiar contraseña</strong>

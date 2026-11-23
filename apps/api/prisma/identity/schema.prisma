@@ -33,6 +33,8 @@ enum OtpPurpose {
   LOGIN
   SIGNATURE
   PASSWORD_RESET
+  // Código al correo para confirmar que es de la persona (activar dos pasos).
+  EMAIL_VERIFICATION
 }
 
 model User {
@@ -52,6 +54,8 @@ model User {
   phoneVerifiedAt            DateTime?             @db.Timestamptz(3)
   emailVerifiedAt            DateTime?             @db.Timestamptz(3)
   lastLoginAt                DateTime?             @db.Timestamptz(3)
+  /// Verificación en dos pasos al iniciar sesión, con código al correo.
+  twoFactorEnabled           Boolean               @default(false)
   closureRequestedAt         DateTime?             @db.Timestamptz(3)
   retentionUntil             DateTime?             @db.Timestamptz(3)
   createdAt                  DateTime              @default(now()) @db.Timestamptz(3)
@@ -109,6 +113,7 @@ model OtpChallenge {
   user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([destination, purpose, expiresAt])
+  @@index([userId, createdAt])
 }
 
 model WebauthnChallenge {

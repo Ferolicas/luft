@@ -55,6 +55,22 @@ export class AuthController {
     return this.auth.login(body, response, request);
   }
 
+  @Post('verify-phone/resend')
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  resendPhone(@Body() body: unknown) {
+    return this.auth.resendPhoneVerification(body);
+  }
+
+  @Post('login/verify')
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
+  verifyLogin(
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+    @Req() request: Request,
+  ) {
+    return this.auth.verifyLogin(body, response, request);
+  }
+
   @Post('password-reset/request')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   passwordResetRequest(@Body() body: unknown) {
@@ -84,6 +100,41 @@ export class AuthController {
   @UseGuards(AuthGuard)
   me(@CurrentUser() user: AuthenticatedUser) {
     return { user };
+  }
+
+  @Get('two-factor')
+  @UseGuards(AuthGuard)
+  twoFactor(@CurrentUser() user: AuthenticatedUser) {
+    return this.auth.twoFactorStatus(user);
+  }
+
+  @Post('two-factor/request')
+  @UseGuards(AuthGuard)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  twoFactorRequest(@CurrentUser() user: AuthenticatedUser) {
+    return this.auth.requestTwoFactor(user);
+  }
+
+  @Post('two-factor/enable')
+  @UseGuards(AuthGuard)
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
+  twoFactorEnable(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: unknown,
+    @Req() request: Request,
+  ) {
+    return this.auth.enableTwoFactor(user, body, request);
+  }
+
+  @Post('two-factor/disable')
+  @UseGuards(AuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  twoFactorDisable(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: unknown,
+    @Req() request: Request,
+  ) {
+    return this.auth.disableTwoFactor(user, body, request);
   }
 
   @Patch('password')

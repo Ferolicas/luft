@@ -20,7 +20,9 @@
 
 - [ ] Validar el contenido pedagógico definitivo con responsable experto.
 - [ ] Ejecutar pruebas end-to-end en los sandboxes de cada proveedor.
-- [ ] Configurar y verificar dominio remitente de correo, WhatsApp y SMS.
+- [x] SMS con LabsMobile (solo para validar el celular en el registro) y correo con Resend desde `luft.com.co` (códigos de firma, recuperación y verificación en dos pasos).
+- [ ] WhatsApp: falta la instancia de Evolution.
+- [ ] Términos y Condiciones propios de LUFT/StartIF: `/legal/terminos` sigue mostrando el aviso de documento en preparación; publicarlos antes de pasar `REGISTRATION_MODE` a `public`.
 - [ ] Ejecutar piloto interno, revisar PQR, trazabilidad y operación por rol.
 - [x] Prueba de concurrencia (2026-11-23, copia aislada con 100.000 cuentas): fluido hasta 1.500 usuarios simultáneos (panel p95 145 ms, 0,02 % de fallos); a 2.000 el panel sube a p95 2,4 s y PM2 reinicia la API por el tope de 768 MB. El límite son los 2 procesos de `luft-api`, no el servidor.
 

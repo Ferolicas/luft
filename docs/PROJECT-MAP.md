@@ -46,14 +46,14 @@ Desktop variant (≥1024px): derived from the mobile design, which stays the sin
 | Route | Screen |
 | --- | --- |
 | `/empezar` | Splash, classification (2 questions, kept in the browser until the account exists) and onboarding carousel |
-| `/registro`, `/verificar`, `/login`, `/recuperar` | Three-step sign-up, phone verification, login (password or passkey), recovery |
+| `/registro`, `/verificar`, `/login`, `/recuperar` | Three-step sign-up, phone verification by SMS (with resend), login (password or passkey, plus email code when two-step is on), recovery by email code |
 | `/app` | Home: credit summary, shortcuts, progress, Lufty tips, financial-profile invitation sheet |
 | `/app/puntaje` | Score gauge and bureau-inquiry consent/status (`/app/diagnostico` redirects here) |
 | `/app/credito` | Five-step offer (quotes from `/startif/quote`), application tracker (KYC, signature), activation and plan |
 | `/app/pagar`, `/app/historial` | PSE payment of the next installment; payment history and badges |
 | `/app/progreso` | Level, XP, streaks, weekly missions and badge wall |
 | `/app/aprender`, `/app/aprender/[slug]`, `/app/aprender/[slug]/[lesson]` | Modules, module detail, lesson story + quiz (content in `apps/web/src/lib/lessons.ts`) |
-| `/app/perfil`, `/app/perfil/cuenta` | Profile hub; account data, passkeys, push, password, closure |
+| `/app/perfil`, `/app/perfil/cuenta` | Profile hub; account data, passkeys, push, two-step sign-in, password, closure |
 | `/app/perfil/financiero/*` | Financial profile: work and income, wealth and debts (with tax-filing orientation), payment habits, documents |
 | `/app/renta` | Tax-return preparation request (fails closed, see below) |
 | `/app/pqr` | Help and PQR |
@@ -80,9 +80,11 @@ Adapters fail closed with `configuration_required` until real credentials and pr
 ## Identity and access
 
 - Opaque, signed, HTTP-only session cookie with Argon2id passwords.
-- Registration and password recovery through OTP; passkeys through WebAuthn.
+- One-time codes: SMS (LabsMobile) only validates the phone at sign-up; password recovery, promissory-note signature and the optional two-step sign-in send the code to the account email (Resend). Passkeys through WebAuthn skip the second step.
+- Two-step sign-in is opt-in from Perfil → Mi cuenta: it is enabled only after confirming a code received by email and disabled with the current password. `POST /auth/login` then answers `next: "two_factor"` without a session and `POST /auth/login/verify` opens it. A login with a phone still pending verification answers `next: "verify_phone"` with a fresh SMS; `POST /auth/verify-phone/resend` issues another one.
+- Each account can request 3 codes per purpose in 10 minutes and 10 per day; a used code cannot open a second session.
 - Tureporte S.A.S., owner of RESTAURAR, is the data controller for LUFT. The canonical privacy and habeas-data policy is published at `https://restaurar.co/privacy`.
-- Until the SMS provider credentials are installed, owner acceptance testing uses `REGISTRATION_MODE=invite`: the API requires a private invite code and reveals the one-time verification code only in the successful registration response. Production public mode never reveals OTP values.
+- `REGISTRATION_MODE=invite` requires a private invite code; the verification code is revealed in the response only if the SMS provider is not configured. Public mode never reveals OTP values and needs the SMS provider.
 - Password change revokes every other active session.
 - Account closure requires the current password and an exact destructive confirmation. Accounts without financial records are erased across operational schemas; accounts with financial records are closed, all sessions are revoked and a configurable retention marker is recorded (ten years by default, pending approval of the definitive retention table).
 - Staff routes enforce `COMMERCIAL`, `LEGAL`, `SUPPORT`, `COLLECTIONS`, `RISK`, `FINANCE`, or `SUPERADMIN` at the API layer.

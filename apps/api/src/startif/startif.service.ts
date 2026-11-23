@@ -583,7 +583,8 @@ export class StartifService {
     const identity = await this.db.identity.user.findUniqueOrThrow({
       where: { id: user.id },
     });
-    return authIssueOtp(user.id, identity.phone, 'SIGNATURE');
+    // El código de firma viaja al correo: el SMS es solo para el registro.
+    return authIssueOtp(user.id, identity.email, 'SIGNATURE');
   }
 
   /**
