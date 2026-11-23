@@ -278,7 +278,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
           ),
           this.integrations.sendWhatsApp(
             identity.phone,
-            `LUFT: tu cuota está ${overdue ? 'vencida' : 'próxima a vencer'}. Revisa y paga de forma segura en luft.restaurar.co.`,
+            `LUFT: tu cuota está ${overdue ? 'vencida' : 'próxima a vencer'}. Revisa y paga de forma segura en ${this.integrations.publicHost()}.`,
           ),
         ]);
       }
@@ -467,7 +467,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     if (userId && publicKey && privateKey) {
       webPush.setVapidDetails(
         this.config.get<string>('VAPID_SUBJECT') ??
-          'mailto:soporte@luft.restaurar.co',
+          `mailto:soporte@${this.integrations.publicHost()}`,
         publicKey,
         privateKey,
       );

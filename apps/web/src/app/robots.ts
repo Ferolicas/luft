@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -7,7 +8,7 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       disallow: ["/app/", "/admin/", "/entidad/", "/aliado/", "/invitacion/", "/api/", "/verificar/"],
     },
-    sitemap: "https://luft.restaurar.co/sitemap.xml",
-    host: "https://luft.restaurar.co",
+    sitemap: `${SITE_URL}/sitemap.xml`,
+    host: SITE_URL,
   };
 }

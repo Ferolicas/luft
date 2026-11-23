@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 
-const origin = "https://luft.restaurar.co";
+const origin = SITE_URL;
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

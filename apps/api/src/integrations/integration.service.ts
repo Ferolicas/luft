@@ -192,6 +192,11 @@ export class IntegrationService {
     );
   }
 
+  /** Public host of the app (from APP_URL); the domain is never hardcoded. */
+  publicHost() {
+    return new URL(this.config.getOrThrow<string>('APP_URL')).host;
+  }
+
   private configurationRequired(provider: string): never {
     throw new ServiceUnavailableException({
       code: 'configuration_required',
@@ -244,7 +249,7 @@ export class IntegrationService {
     const result = await new Resend(apiKey).emails.send({
       from:
         this.config.get<string>('EMAIL_FROM') ??
-        'LUFT <hola@luft.restaurar.co>',
+        `LUFT <hola@${this.publicHost()}>`,
       to,
       subject,
       html,

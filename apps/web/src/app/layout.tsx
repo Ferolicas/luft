@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans } from "next/font/google";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 import "./luft.css";
 import "./luft-desktop.css";
@@ -7,7 +8,7 @@ import "./luft-desktop.css";
 const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "700"], variable: "--font-dm-sans", display: "swap" });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://luft.restaurar.co"),
+  metadataBase: new URL(SITE_URL),
   title: { default: "LUFT — Construye tu futuro financiero", template: "%s · LUFT" },
   description: "Diagnóstico, educación y una ruta clara para construir tu historial financiero en Colombia.",
   applicationName: "LUFT",

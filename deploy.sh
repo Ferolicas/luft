@@ -36,6 +36,8 @@ chmod 700 "$PRIVATE_STORAGE_PATH"
 
 install -o root -g root -m 700 scripts/backup-production.sh /usr/local/sbin/luft-backup
 install -o root -g root -m 600 deploy/luft-backup.cron /etc/cron.d/luft-backup
+# Mantiene al día el activador de dominio (lo usa el temporizador luft-dominio).
+install -o root -g root -m 755 deploy/activar-dominio.sh /usr/local/sbin/luft-activar-dominio
 
 pm2 startOrReload ecosystem.config.cjs --update-env
 # PM2's startOrReload can retain values that already existed in a process.

@@ -1,0 +1,10 @@
+[Unit]
+Description=Comprueba cada 15 minutos si luft.com.co ya apunta a este servidor
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
