@@ -1,6 +1,6 @@
 # Paso a luft.com.co
 
-LUFT funciona hoy en `luft.restaurar.co`. El servidor ya está preparado para pasar a `luft.com.co` sin intervención: un temporizador (`luft-dominio.timer`, cada 15 minutos) ejecuta `/usr/local/sbin/luft-activar-dominio`, que al detectar que el dominio llega al servidor emite el certificado, instala el sitio definitivo de Nginx, actualiza `.env`, redespliega y se desactiva. El registro queda en `/var/log/luft-dominio.log`.
+LUFT funciona en `luft.com.co` desde el 2026-11-23 y `luft.restaurar.co` quedó retirado de Nginx. El paso se hizo sin intervención: un temporizador (`luft-dominio.timer`, cada 15 minutos) ejecuta `/usr/local/sbin/luft-activar-dominio`, que al detectar que el dominio llega al servidor emite el certificado, instala el sitio definitivo de Nginx, actualiza `.env`, redespliega y se desactiva. El registro queda en `/var/log/luft-dominio.log`.
 
 ## Lo único que hay que hacer en Cloudflare
 
@@ -26,7 +26,7 @@ Los tres van en **Solo DNS**. El activador pide la verificación a Resend; hasta
 ## Qué cambia al activarse
 
 - `APP_URL`, `WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGIN`, `EMAIL_FROM` y `VAPID_SUBJECT` pasan a `luft.com.co`.
-- `luft.restaurar.co` redirige al dominio nuevo (los webhooks bajo `/api/webhooks/` siguen respondiendo en el anterior).
+- `luft.restaurar.co` ya no se sirve: el sitio de Nginx solo atiende `luft.com.co` y `www.luft.com.co`.
 - Las sesiones abiertas en el dominio anterior no se conservan (la cookie es por dominio): hay que volver a entrar.
 - Las llaves de acceso (passkeys) quedan ligadas al dominio en que se crearon: las registradas en `luft.restaurar.co` dejan de servir y se vuelven a registrar desde Perfil → Mi cuenta. La contraseña no cambia.
 - Los webhooks de proveedores deben registrarse con `https://luft.com.co/api/webhooks/...`.

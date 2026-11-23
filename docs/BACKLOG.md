@@ -8,7 +8,7 @@
 - [x] WebSockets multiinstancia y automatizaciones BullMQ/n8n.
 - [x] Adaptadores reales que fallan de forma cerrada cuando falta configuración.
 - [x] CI/CD, health checks, migraciones, backups y rollback por Git.
-- [ ] Crear el registro DNS A de `luft.restaurar.co` hacia el VPS y emitir SSL. Bloqueado por acceso al proveedor DNS.
+- [x] Dominio público `luft.com.co` con SSL (activo desde el 2026-11-23).
 - [ ] Aprobar y publicar privacidad, tratamiento de datos, términos y documentos contractuales. Bloqueado por identidad legal pendiente.
 - [ ] Instalar credenciales reales y completar certificación/sandbox de Mercado Pago, Truora, bureaus y comunicaciones.
 
@@ -22,7 +22,7 @@
 - [ ] Ejecutar pruebas end-to-end en los sandboxes de cada proveedor.
 - [ ] Configurar y verificar dominio remitente de correo, WhatsApp y SMS.
 - [ ] Ejecutar piloto interno, revisar PQR, trazabilidad y operación por rol.
-- [ ] Realizar prueba de concurrencia sobre una réplica o ventana controlada y fijar SLO de p95/errores.
+- [x] Prueba de concurrencia (2026-11-23, copia aislada con 100.000 cuentas): fluido hasta 1.500 usuarios simultáneos (panel p95 145 ms, 0,02 % de fallos); a 2.000 el panel sube a p95 2,4 s y PM2 reinicia la API por el tope de 768 MB. El límite son los 2 procesos de `luft-api`, no el servidor.
 
 ## P2 — crecimiento
 

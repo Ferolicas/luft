@@ -7,7 +7,7 @@ All adapters are present but disabled by default. Add values in the server-only 
 Official references: [PSE through Orders API](https://www.mercadopago.com.co/developers/es/docs/checkout-api-orders/payment-integration/pse), [Orders integration model](https://www.mercadopago.com.co/developers/es/docs/checkout-api-orders/integration-model), and [signed webhooks](https://www.mercadopago.com.co/developers/es/docs/your-integrations/notifications/webhooks).
 
 - Set `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_PUBLIC_KEY`, and `MERCADOPAGO_WEBHOOK_SECRET`.
-- Configure the production webhook as `https://luft.restaurar.co/api/webhooks/mercadopago` for the Orders event.
+- Configure the production webhook as `https://luft.com.co/api/webhooks/mercadopago` for the Orders event.
 - The API validates `x-signature`/`x-request-id`, always retrieves the notified order or payment from Mercado Pago, verifies its amount, and claims the state change atomically so concurrent or replayed webhooks cannot credit a quota twice.
 - Reused payment attempts return the still-active PSE redirect for 30 minutes. Late duplicate approvals and refunds reopen/reconcile the financial state and emit an operational automation instead of silently changing balances.
 - Test approved, rejected, cancelled, duplicate, late, and invalid-signature notifications before setting `MERCADOPAGO_ENABLED=true`.
@@ -18,7 +18,7 @@ Official references: [developer portal](https://dev.truora.com/), [API integrati
 
 - Set `TRUORA_API_KEY`, `TRUORA_ACCOUNT_ID`, `TRUORA_FLOW_ID`, and `TRUORA_WEBHOOK_SECRET`.
 - Confirm the contracted start endpoint in `TRUORA_START_ENDPOINT`; provider product versions can use different process/token paths.
-- Configure callbacks to `https://luft.restaurar.co/api/webhooks/truora` and certify the exact signature scheme supplied for the account.
+- Configure callbacks to `https://luft.com.co/api/webhooks/truora` and certify the exact signature scheme supplied for the account.
 - Keep `TRUORA_ENABLED=false` until the final contracted payload and webhook sample have passed tests.
 
 ## DataCrédito Experian and TransUnion/CIFIN
@@ -29,7 +29,7 @@ The Colombian query and monthly reporting specifications are contract-gated. LUF
 
 ## Communications and automations
 
-- Email uses the official [Resend Node.js SDK flow](https://resend.com/docs/send-with-nodejs); verify `luft.restaurar.co`, then set `RESEND_API_KEY` and `EMAIL_FROM`.
+- Email uses the official [Resend Node.js SDK flow](https://resend.com/docs/send-with-nodejs); verify `luft.com.co`, then set `RESEND_API_KEY` and `EMAIL_FROM`.
 - WhatsApp uses the holding's Evolution API and `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, and `EVOLUTION_INSTANCE`.
 - SMS is provider-neutral until commercial selection; map the final HTTPS endpoint and bearer key to `SMS_BASE_URL`/`SMS_API_KEY`.
 - n8n receives HMAC-SHA256 signed events. Import the JSON files in `automations/n8n`, set the same `N8N_WEBHOOK_SECRET`, verify each workflow, and then set `N8N_ENABLED=true`.
@@ -40,7 +40,7 @@ The Colombian query and monthly reporting specifications are contract-gated. LUF
 Closed until a regulated provider is contracted. The adapter is provider-neutral (OAuth client credentials plus a configurable consent endpoint) and must be adjusted to the final vendor specification.
 
 - Set `OPENFINANCE_BASE_URL`, `OPENFINANCE_CLIENT_ID`, `OPENFINANCE_CLIENT_SECRET`, `OPENFINANCE_WEBHOOK_SECRET` and `OPENFINANCE_CONSENT_ENDPOINT`; `OPENFINANCE_CONSENT_DAYS` defaults to 90.
-- Configure the provider callback as `https://luft.restaurar.co/api/webhooks/open-finance` (HMAC signature in `x-openfinance-signature`).
+- Configure the provider callback as `https://luft.com.co/api/webhooks/open-finance` (HMAC signature in `x-openfinance-signature`).
 - `OPENFINANCE_ENABLED=true` without every credential stops the API at boot on purpose: there is no partially working mode.
 - LUFT never asks for banking passwords. Each connection records its own consent (scope, expiry, revocation); revoking the `OPEN_FINANCE` consent revokes the connections.
 

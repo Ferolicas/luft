@@ -11,7 +11,7 @@ Last updated: 2026-11-23.
 | Worker | `apps/api/src/worker.ts` | none | Scheduled and queued jobs |
 | Scoring | `services/scoring` | 4004 | Versioned profile/scoring decisions |
 
-Nginx serves `luft.restaurar.co` over HTTPS, redirects HTTP to HTTPS, routes `/api/*` and `/socket.io/*` to NestJS, and all other traffic to Next.js.
+Nginx serves `luft.com.co` over HTTPS, redirects HTTP to HTTPS, routes `/api/*` and `/socket.io/*` to NestJS, and all other traffic to Next.js.
 
 ## Data boundaries
 

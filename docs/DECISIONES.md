@@ -30,7 +30,7 @@ Fecha de consolidación: 2026-09-01. Alcance aprobado por el propietario al indi
 
 - Objetivo inicial: 1.500 usuarios registrados; se repetirá la prueba de carga antes de superar ese nivel o lanzar campañas de alta concurrencia.
 - Despliegue en el VPS accesible por alias SSH `restaurar`, con PM2, Nginx, PostgreSQL, Redis y copias diarias.
-- Dominio público: `luft.restaurar.co`.
+- Dominio público: `luft.com.co` (activo desde el 2026-11-23; `luft.restaurar.co` quedó retirado de Nginx).
 - Repositorio canónico público: `Ferolicas/luft`, rama `main`, con verificación y despliegue continuos.
 
 ## LUFT + STARTIF V2 (2026-11-22)
@@ -48,9 +48,12 @@ Instrucciones del propietario del 20 de noviembre de 2026 y entrega "LUFT_STARTI
 - Roles nuevos: entidad financiera y aliado, cada uno con su portal y solo con vínculo.
 - `/app/renta` lleva al asistente de formalización, que cubre la preparación guiada.
 
+## Identidad legal (2026-11-23)
+
+- LUFT se presenta por ahora como una marca de Tureporte S.A.S., igual que RESTAURAR: la política de datos sigue siendo la de `https://restaurar.co/privacy` y el responsable del tratamiento es Tureporte S.A.S. Decisión del propietario; se revisa cuando LUFT/StartIF tengan identidad legal propia.
+
 ## Decisiones pendientes del propietario
 
-- Identidad legal exacta de LUFT/StartIF, NIT, domicilio y correos oficiales de privacidad/PQR.
 - Confirmación de si el servicio se limitará jurídicamente a Colombia.
 - Credenciales, contratos, endpoints privados y ambientes otorgados por cada proveedor.
 - Crédito 2: monto o rango, plazo, tasa y tope de endeudamiento (está en borrador hasta definirlos).
