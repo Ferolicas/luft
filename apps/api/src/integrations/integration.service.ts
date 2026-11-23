@@ -10,6 +10,11 @@ import { Resend } from 'resend';
 import { otpEmail, type EmailOtpPurpose } from './otp-email';
 import {
   buildSmsRequest,
+  isLabsMobile,
+  LABSMOBILE_BALANCE_URL,
+  LABSMOBILE_PRICES_URL,
+  smsBalance,
+  type SmsBalance,
   smsAccepted,
   smsReady,
   type SmsSettings,
@@ -258,6 +263,40 @@ export class IntegrationService {
       provider: 'SMS',
       data: { messageId: payload?.messageId ?? payload?.subid },
     };
+  }
+
+  /**
+   * Saldo del proveedor de SMS expresado en mensajes a Colombia. Devuelve
+   * `null` si el proveedor no está configurado o no publica su saldo.
+   */
+  async smsBalance(): Promise<SmsBalance | null> {
+    const settings = this.smsSettings();
+    if (!isLabsMobile(settings) || !smsReady(settings)) return null;
+    const headers = {
+      Authorization: `Basic ${Buffer.from(`${settings.apiUser}:${settings.apiKey}`).toString('base64')}`,
+      'Content-Type': 'application/json',
+    };
+    const [balance, prices] = await Promise.all([
+      fetch(LABSMOBILE_BALANCE_URL, {
+        headers,
+        signal: AbortSignal.timeout(15_000),
+      }),
+      fetch(LABSMOBILE_PRICES_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ format: 'JSON', countries: ['CO'] }),
+        signal: AbortSignal.timeout(15_000),
+      }),
+    ]);
+    if (!balance.ok || !prices.ok)
+      throw new ServiceUnavailableException({
+        code: 'provider_error',
+        provider: 'SMS',
+      });
+    const credits = ((await balance.json()) as { credits?: unknown }).credits;
+    const colombia = ((await prices.json()) as { CO?: { credits?: unknown } })
+      .CO;
+    return smsBalance(credits, colombia?.credits);
   }
 
   /** Código de un solo uso por correo (entrada, firma, contraseña, dos pasos). */

@@ -83,6 +83,8 @@ Adapters fail closed with `configuration_required` until real credentials and pr
 - One-time codes: SMS (LabsMobile) only validates the phone at sign-up; password recovery, promissory-note signature and the optional two-step sign-in send the code to the account email (Resend). Passkeys through WebAuthn skip the second step.
 - Two-step sign-in is opt-in from Perfil → Mi cuenta: it is enabled only after confirming a code received by email and disabled with the current password. `POST /auth/login` then answers `next: "two_factor"` without a session and `POST /auth/login/verify` opens it. A login with a phone still pending verification answers `next: "verify_phone"` with a fresh SMS; `POST /auth/verify-phone/resend` issues another one.
 - Each account can request 3 codes per purpose in 10 minutes and 10 per day; a used code cannot open a second session.
+- Registration is public; the terms at `/legal/terminos` carry a version (`TERMS_VERSION` in `auth.service.ts`, mirrored in the page) that is stored in the `identity.user.registered` audit event.
+- The worker checks the LabsMobile balance every 15 minutes and emails `SMS_LOW_BALANCE_ALERT_EMAIL` when it covers `SMS_LOW_BALANCE_THRESHOLD` messages or fewer (once a day while it stays low).
 - Tureporte S.A.S., owner of RESTAURAR, is the data controller for LUFT. The canonical privacy and habeas-data policy is published at `https://restaurar.co/privacy`.
 - `REGISTRATION_MODE=invite` requires a private invite code; the verification code is revealed in the response only if the SMS provider is not configured. Public mode never reveals OTP values and needs the SMS provider.
 - Password change revokes every other active session.

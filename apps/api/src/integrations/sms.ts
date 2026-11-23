@@ -84,3 +84,51 @@ export function smsAccepted(
   const code = (payload as { code?: unknown } | null)?.code;
   return String(code) === '0';
 }
+
+export const LABSMOBILE_BALANCE_URL = 'https://api.labsmobile.com/json/balance';
+export const LABSMOBILE_PRICES_URL = 'https://api.labsmobile.com/json/prices';
+
+export interface SmsBalance {
+  credits: number;
+  /** Créditos que descuenta un SMS a Colombia. */
+  perMessage: number;
+  /** SMS completos que alcanza a pagar el saldo. */
+  remaining: number;
+}
+
+/** Devuelve `null` si el proveedor no dio cifras utilizables. */
+export function smsBalance(
+  credits: unknown,
+  perMessage: unknown,
+): SmsBalance | null {
+  const balance = Number(credits);
+  const price = Number(perMessage);
+  if (!Number.isFinite(balance) || !Number.isFinite(price) || price <= 0)
+    return null;
+  return {
+    credits: balance,
+    perMessage: price,
+    remaining: Math.max(0, Math.floor(balance / price + 1e-9)),
+  };
+}
+
+export function lowBalanceEmail(
+  balance: SmsBalance,
+  threshold: number,
+): { subject: string; html: string } {
+  const remaining = balance.remaining;
+  return {
+    subject:
+      remaining === 0
+        ? 'LUFT se quedó sin saldo de SMS'
+        : `A LUFT le quedan ${remaining} SMS de saldo`,
+    html: [
+      '<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#1c1c1c">',
+      '<h1 style="font-size:20px;margin:0 0 12px">Saldo de SMS bajo</h1>',
+      `<p style="margin:0 0 12px">El saldo de LabsMobile alcanza para <strong>${remaining} SMS</strong> a Colombia (${balance.credits.toFixed(3)} créditos). El aviso salta cuando quedan ${threshold} o menos.</p>`,
+      '<p style="margin:0 0 12px">Cada registro nuevo en LUFT gasta un SMS para validar el celular. Sin saldo, nadie puede terminar de crear su cuenta.</p>',
+      '<p style="margin:0 0 12px">Recarga créditos en <a href="https://www.labsmobile.com">labsmobile.com</a>. Este aviso se repite una vez al día mientras el saldo siga bajo.</p>',
+      '</div>',
+    ].join(''),
+  };
+}

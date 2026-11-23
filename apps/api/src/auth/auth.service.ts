@@ -86,6 +86,9 @@ const otpInputSchema = z.object({
 const OTP_BURST = { minutes: 10, max: 3 };
 const OTP_DAILY = { minutes: 24 * 60, max: 10 };
 
+/** Versión de los Términos y Condiciones publicados en /legal/terminos. */
+export const TERMS_VERSION = '2026-11-23';
+
 const CONSENT_TEXT =
   'Autorizo a Tureporte S.A.S., propietaria de RESTAURAR y responsable de LUFT, el tratamiento de mis datos personales para crear mi cuenta, verificar mi identidad, personalizar mi educación financiera y gestionar mis solicitudes, conforme a la política publicada en https://restaurar.co/privacy. Las consultas y reportes ante operadores de información financiera requieren autorizaciones separadas y expresas.';
 
@@ -213,7 +216,11 @@ export class AuthService {
       resourceId: user.id,
       ip: request.ip,
       userAgent: request.get('user-agent'),
-      payload: { consentVersion: input.consentVersion, stratum: input.stratum },
+      payload: {
+        consentVersion: input.consentVersion,
+        termsVersion: TERMS_VERSION,
+        stratum: input.stratum,
+      },
     });
     return { userId: user.id, next: 'verify_phone', verification };
   }

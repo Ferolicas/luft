@@ -11,6 +11,7 @@ import { AuditService } from './common/audit.service';
 import { CryptoService } from './common/crypto.service';
 import { DatabaseService } from './database/database.service';
 import { IntegrationService } from './integrations/integration.service';
+import { lowBalanceEmail } from './integrations/sms';
 import {
   bogotaDate,
   daysOverdue,
@@ -95,6 +96,12 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
       'legal-rate-sync',
       { pattern: '5 */6 * * *' },
       { name: 'legal-rate-sync', data: {} },
+    );
+    // Saldo de SMS: sin saldo nadie puede terminar de registrarse.
+    void this.schedulerQueue.upsertJobScheduler(
+      'sms-balance-check',
+      { pattern: '*/15 * * * *' },
+      { name: 'sms-balance-check', data: {} },
     );
     void this.legalRates
       .sync()
@@ -190,7 +197,45 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Avisa por correo cuando el saldo de SMS alcanza para pocos mensajes. El
+   * aviso se repite una vez al día mientras siga bajo y se rearma al recargar.
+   */
+  private async checkSmsBalance() {
+    const to = this.config.get<string>('SMS_LOW_BALANCE_ALERT_EMAIL');
+    if (!to || !this.schedulerQueue) return;
+    const threshold = Number(
+      this.config.get('SMS_LOW_BALANCE_THRESHOLD') ?? 20,
+    );
+    const balance = await this.integrations.smsBalance();
+    if (!balance) return;
+    const redis = await this.schedulerQueue.client;
+    const key = `${this.config.get<string>('REDIS_PREFIX') ?? 'luft:'}sms-low-balance-alerted`;
+    if (balance.remaining > threshold) {
+      await redis.del(key);
+      return;
+    }
+    // Una sola alerta por día mientras el saldo siga bajo.
+    const last = Number(await redis.get(key));
+    if (last && Date.now() - last < 86_400_000) return;
+    await redis.set(key, String(Date.now()));
+    try {
+      const { subject, html } = lowBalanceEmail(balance, threshold);
+      const delivery = await this.integrations.sendEmail(to, subject, html);
+      if (delivery.status !== 'ready') throw new Error('correo sin configurar');
+      this.logger.warn(`Saldo de SMS bajo: quedan ${balance.remaining}`);
+    } catch (error) {
+      // Si el aviso no salió, se vuelve a intentar en la siguiente revisión.
+      await redis.del(key);
+      throw error;
+    }
+  }
+
   private async lifecycle(job: Job) {
+    if (job.name === 'sms-balance-check') {
+      await this.checkSmsBalance();
+      return;
+    }
     if (job.name === 'legal-rate-sync') {
       await this.legalRates.sync();
       return;

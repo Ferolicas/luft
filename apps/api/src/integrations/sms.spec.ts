@@ -1,6 +1,8 @@
 import {
   buildSmsRequest,
   LABSMOBILE_SEND_URL,
+  lowBalanceEmail,
+  smsBalance,
   otpMessage,
   smsAccepted,
   smsReady,
@@ -81,5 +83,36 @@ describe('SMS de verificación', () => {
     expect(smsAccepted({ apiKey: 'k', baseUrl: 'https://x' }, true, {})).toBe(
       true,
     );
+  });
+});
+
+describe('saldo de SMS', () => {
+  it('calcula cuántos SMS alcanza a pagar el saldo', () => {
+    expect(smsBalance('9.956954285714286', 0.043)).toEqual({
+      credits: 9.956954285714286,
+      perMessage: 0.043,
+      remaining: 231,
+    });
+    expect(smsBalance('0.86', 0.043)?.remaining).toBe(20);
+    expect(smsBalance('0.04', 0.043)?.remaining).toBe(0);
+  });
+
+  it('no inventa un saldo si el proveedor no dio cifras', () => {
+    expect(smsBalance(undefined, 0.043)).toBeNull();
+    expect(smsBalance('10', 0)).toBeNull();
+    expect(smsBalance('abc', 0.043)).toBeNull();
+  });
+
+  it('avisa con el número de SMS que quedan', () => {
+    const low = lowBalanceEmail(
+      { credits: 0.86, perMessage: 0.043, remaining: 20 },
+      20,
+    );
+    expect(low.subject).toBe('A LUFT le quedan 20 SMS de saldo');
+    expect(low.html).toContain('<strong>20 SMS</strong>');
+    expect(
+      lowBalanceEmail({ credits: 0, perMessage: 0.043, remaining: 0 }, 20)
+        .subject,
+    ).toBe('LUFT se quedó sin saldo de SMS');
   });
 });
