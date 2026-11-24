@@ -129,6 +129,32 @@ describe('códigos de un solo uso', () => {
     );
     expect(integrations.sendOtp).not.toHaveBeenCalled();
   });
+
+  it('responde con la misma forma exista o no la cuenta (no la delata)', async () => {
+    const existing = fixture();
+    const known = await existing.service.requestPasswordReset({
+      identifier: 'ana.perez',
+    });
+
+    const missing = fixture();
+    missing.db.identity.user.findFirst.mockResolvedValue(null);
+    const unknown = await missing.service.requestPasswordReset({
+      identifier: 'nadie.existe',
+    });
+
+    expect(missing.integrations.sendOtpEmail).not.toHaveBeenCalled();
+    expect(Object.keys(unknown).sort()).toEqual(Object.keys(known).sort());
+    expect(unknown.delivery).toBe(known.delivery);
+    expect(unknown.expiresAt).toBeInstanceOf(Date);
+
+    // También cuando la cuenta existe pero agotó su cupo de códigos.
+    const limited = fixture();
+    limited.challenge.count.mockResolvedValue(3);
+    const throttled = await limited.service.requestPasswordReset({
+      identifier: 'ana.perez',
+    });
+    expect(Object.keys(throttled).sort()).toEqual(Object.keys(known).sort());
+  });
 });
 
 describe('inicio de sesión', () => {

@@ -617,10 +617,13 @@ export class AuthService {
     const user = await this.db.identity.user.findFirst({
       where: { OR: [{ email: identifier }, { username: identifier }] },
     });
+    // La respuesta tiene los mismos campos exista o no la cuenta: una
+    // diferencia de forma (p. ej. la falta de `expiresAt`) la delataría.
     if (!user)
       return {
         challengeId: randomUUID(),
         delivery: 'accepted',
+        expiresAt: addMinutes(new Date(), 10),
         expiresInMinutes: 10,
       };
     const result = await this.issueOtp(
