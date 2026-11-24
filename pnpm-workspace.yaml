@@ -16,6 +16,7 @@ overrides:
   multer: '>=2.5.0'
   mysql2: '>=3.24.0'
   deepmerge-ts: '>=8.0.0'
+  effect@3: 3.22.1
   fast-uri: '>=4.2.3'
   handlebars: '>=4.7.10'
   engine.io: '>=6.6.11'
